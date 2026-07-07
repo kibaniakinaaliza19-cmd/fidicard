@@ -4,6 +4,9 @@ import { useEffect } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import Toaster from "@/components/ui/Toaster";
 import FidiAI from "@/components/editor/FidiAI";
+import PublishModal from "@/components/editor/PublishModal";
+import WalletPreviewModal from "@/components/editor/WalletPreviewModal";
+import TemplateGalleryModal from "@/components/editor/TemplateGalleryModal";
 import { useUIStore } from "@/store/uiStore";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -38,6 +41,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="relative z-10 flex-1 overflow-y-auto">{children}</main>
       <Toaster />
       <FidiAI />
+      <PublishModal />
+      <WalletPreviewModal />
+      <TemplateGalleryModal />
     </div>
   );
 }

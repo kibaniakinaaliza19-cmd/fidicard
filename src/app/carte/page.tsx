@@ -3,9 +3,6 @@ import TemplatesPanel from "@/components/editor/TemplatesPanel";
 import ToolsList from "@/components/editor/ToolsList";
 import PhonePreview from "@/components/editor/PhonePreview";
 import RightPanel from "@/components/editor/RightPanel";
-import TemplateGalleryModal from "@/components/editor/TemplateGalleryModal";
-import WalletPreviewModal from "@/components/editor/WalletPreviewModal";
-import PublishModal from "@/components/editor/PublishModal";
 
 export default function CartePage() {
   return (
@@ -19,9 +16,6 @@ export default function CartePage() {
         <PhonePreview />
         <RightPanel />
       </div>
-      <TemplateGalleryModal />
-      <WalletPreviewModal />
-      <PublishModal />
     </div>
   );
 }
