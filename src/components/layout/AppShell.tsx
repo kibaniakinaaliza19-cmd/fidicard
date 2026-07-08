@@ -1,17 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Toaster from "@/components/ui/Toaster";
-import FidiAI from "@/components/editor/FidiAI";
 import PublishModal from "@/components/editor/PublishModal";
 import WalletPreviewModal from "@/components/editor/WalletPreviewModal";
-import TemplateGalleryModal from "@/components/editor/TemplateGalleryModal";
 import { useUIStore } from "@/store/uiStore";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
+  const pathname = usePathname();
+  const fullBleed = pathname?.startsWith("/carte");
 
   useEffect(() => {
     const current = document.documentElement.getAttribute("data-theme");
@@ -27,6 +28,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [theme]);
 
+  if (fullBleed) {
+    return (
+      <div className="h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
+        {children}
+        <Toaster />
+        <PublishModal />
+        <WalletPreviewModal />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
       <div
@@ -40,10 +52,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <main className="relative z-10 flex-1 overflow-y-auto">{children}</main>
       <Toaster />
-      <FidiAI />
       <PublishModal />
       <WalletPreviewModal />
-      <TemplateGalleryModal />
     </div>
   );
 }

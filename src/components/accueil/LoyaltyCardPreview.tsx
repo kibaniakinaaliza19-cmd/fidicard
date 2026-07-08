@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MoreHorizontal, Pencil, Maximize2 } from "lucide-react";
-import WalletCard from "@/components/editor/WalletCard";
+import MiniCard from "@/components/cardEditor/MiniCard";
 import { useUIStore } from "@/store/uiStore";
+import { useCardStore } from "@/store/cardStore";
 
 export default function LoyaltyCardPreview() {
   const [menuOpen, setMenuOpen] = useState(false);
   const setWalletPreviewOpen = useUIStore((s) => s.setWalletPreviewOpen);
+  const card = useCardStore((s) => s.card);
+  const loadCard = useCardStore((s) => s.loadCard);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("fidicard-card-doc");
+      if (raw) loadCard(JSON.parse(raw));
+    } catch {}
+  }, [loadCard]);
 
   return (
     <div
@@ -56,8 +66,8 @@ export default function LoyaltyCardPreview() {
         </div>
       </div>
 
-      <div className="float-slow">
-        <WalletCard />
+      <div className="float-slow flex justify-center">
+        <MiniCard doc={card} width={300} />
       </div>
 
       <div className="mt-4 flex justify-center gap-1.5">

@@ -5,20 +5,20 @@ import { QRCodeSVG } from "qrcode.react";
 import { Link2, Download, Wallet, Smartphone, Check, Rocket } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { useUIStore } from "@/store/uiStore";
-import { useEditorStore } from "@/store/editorStore";
+import { useCardStore } from "@/store/cardStore";
 
 export default function PublishModal() {
   const open = useUIStore((s) => s.publishModalOpen);
   const setOpen = useUIStore((s) => s.setPublishModalOpen);
   const pushToast = useUIStore((s) => s.pushToast);
-  const design = useEditorStore((s) => s.design);
+  const card = useCardStore((s) => s.card);
   const [copied, setCopied] = useState(false);
   const [published, setPublished] = useState(false);
 
   const shareUrl = useMemo(() => {
-    const slug = design.companyName.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const slug = card.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     return `https://fidicard.app/c/${slug || "ma-carte"}`;
-  }, [design.companyName]);
+  }, [card.name]);
 
   function handleCopy() {
     navigator.clipboard?.writeText(shareUrl).catch(() => {});
@@ -28,11 +28,11 @@ export default function PublishModal() {
   }
 
   function handleDownload() {
-    const blob = new Blob([JSON.stringify(design, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(card, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${design.companyName || "carte"}-fidicard.json`;
+    a.download = `${card.name || "carte"}-fidicard.json`;
     a.click();
     URL.revokeObjectURL(url);
     pushToast("Configuration téléchargée");
