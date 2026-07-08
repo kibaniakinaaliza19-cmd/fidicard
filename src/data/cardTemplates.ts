@@ -2,7 +2,6 @@ import type { CardDoc, Layer } from "@/types/layer";
 import {
   createBarcodeLayer,
   createIconLayer,
-  createQrCodeLayer,
   createShapeLayer,
   createTextLayer,
   makeId,
@@ -112,7 +111,6 @@ export const cardTemplates: CardTemplateMeta[] = [
         text("Votre pause, notre passion", { x: 8, y: 37, width: 55, height: 6, fontSize: 9, color: "#c9a98f" }),
         ...stampRow(5, 3, "Coffee", 52, "#f0653e"),
         text("Une boisson offerte à la 10ᵉ visite", { x: 8, y: 76, width: 60, height: 6, fontSize: 9, fontWeight: 500, color: "#f0c8b4" }),
-        createQrCodeLayer(nz(), { id: makeId("qr"), name: "QR Code", x: 76, y: 24, width: 16, height: 27 }),
       ]),
   },
   {
@@ -127,7 +125,6 @@ export const cardTemplates: CardTemplateMeta[] = [
         shape("line", { x: 8, y: 50, width: 84, height: 2, fill: "#d4af37", opacity: 50 }),
         text("Membre privilège", { x: 8, y: 60, width: 40, height: 6, fontSize: 9, color: "#c9a227" }),
         text("Dessert offert à 200 points", { x: 8, y: 78, width: 60, height: 6, fontSize: 9, fontWeight: 500, color: "#e6c15c" }),
-        createQrCodeLayer(nz(), { id: makeId("qr"), name: "QR Code", x: 76, y: 58, width: 16, height: 27 }),
       ]),
   },
   {
@@ -206,7 +203,6 @@ export const cardTemplates: CardTemplateMeta[] = [
         text("PHARMA CARE", { x: 19, y: 24, width: 55, height: 9, fontSize: 18, fontWeight: 700, color: "#ffffff" }),
         text("Votre santé, notre priorité", { x: 19, y: 35, width: 60, height: 6, fontSize: 9, color: "#6ee7b7" }),
         ...stampRow(5, 1, "Heart", 54, "#34d399"),
-        createQrCodeLayer(nz(), { id: makeId("qr"), name: "QR Code", x: 76, y: 22, width: 16, height: 27 }),
       ]),
   },
   {
@@ -232,7 +228,6 @@ export const cardTemplates: CardTemplateMeta[] = [
         text("votre fidélité", { x: 8, y: 31, width: 55, height: 12, fontSize: 24, fontWeight: 400, font: "great-vibes", color: "#d4af37" }),
         text("CHAQUE ACHAT VOUS RAPPROCHE D'UNE RÉCOMPENSE", { x: 8, y: 50, width: 55, height: 8, fontSize: 7, fontWeight: 500, color: "#cbb78f" }),
         ...stampRow(5, 4, "Gift", 66, "#d4af37"),
-        createQrCodeLayer(nz(), { id: makeId("qr"), name: "QR Code", x: 74, y: 30, width: 18, height: 30 }),
       ]),
   },
   {
@@ -245,7 +240,6 @@ export const cardTemplates: CardTemplateMeta[] = [
         text("HÔTEL AZUR", { x: 19, y: 24, width: 55, height: 9, fontSize: 18, fontWeight: 700, color: "#d4af37" }),
         text("L'excellence de l'accueil", { x: 19, y: 35, width: 60, height: 6, fontSize: 9, color: "#7dd3fc" }),
         text("1 nuit offerte à 1000 points", { x: 8, y: 78, width: 60, height: 6, fontSize: 9, fontWeight: 500, color: "#bae6fd" }),
-        createQrCodeLayer(nz(), { id: makeId("qr"), name: "QR Code", x: 76, y: 50, width: 16, height: 30 }),
       ]),
   },
   {

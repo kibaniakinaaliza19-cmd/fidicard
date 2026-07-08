@@ -1,5 +1,5 @@
 import type { CardDoc } from "@/types/layer";
-import { createTextLayer, createQrCodeLayer, makeId } from "@/lib/layerFactory";
+import { createTextLayer, makeId } from "@/lib/layerFactory";
 
 export function createBlankCard(): CardDoc {
   return {
@@ -53,15 +53,6 @@ export function createBlankCard(): CardDoc {
         fontSize: 10,
         fontWeight: 500,
         color: "#f0c8b4",
-      }),
-      createQrCodeLayer(4, {
-        id: makeId("qr"),
-        name: "QR Code",
-        x: 74,
-        y: 55,
-        width: 18,
-        height: 30,
-        value: "https://fidicard.app/c/ma-carte",
       }),
     ],
     published: false,
