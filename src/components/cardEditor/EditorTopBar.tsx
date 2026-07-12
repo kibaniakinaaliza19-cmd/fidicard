@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { CreditCard, Eye, Save, Rocket, ChevronLeft } from "lucide-react";
+import { Eye, Save, Rocket, ChevronLeft } from "lucide-react";
+import FidiLogo from "@/components/ui/FidiLogo";
 import { useCardStore } from "@/store/cardStore";
 import { useUIStore } from "@/store/uiStore";
 
@@ -31,9 +32,7 @@ export default function EditorTopBar() {
     >
       <Link href="/accueil" className="flex items-center gap-2.5 pr-2" title="Retour à l'accueil">
         <ChevronLeft size={18} style={{ color: "var(--text-faint)" }} />
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg text-white" style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}>
-          <CreditCard size={16} />
-        </span>
+        <FidiLogo size={30} />
         <span className="text-base font-semibold tracking-tight" style={{ color: "var(--text)" }}>FidiCard</span>
       </Link>
 

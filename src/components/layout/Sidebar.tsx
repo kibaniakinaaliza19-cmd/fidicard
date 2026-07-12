@@ -15,6 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useUIStore } from "@/store/uiStore";
+import FidiLogo from "@/components/ui/FidiLogo";
 
 const navItems: { href: string; label: string; icon: typeof Home; badge?: string }[] = [
   { href: "/accueil", label: "Accueil", icon: Home },
@@ -35,16 +36,8 @@ export default function Sidebar() {
       className="relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r px-4 py-6"
       style={{ background: "var(--panel)", borderColor: "var(--border)" }}
     >
-      <Link href="/accueil" className="mb-8 flex items-center gap-3 px-2">
-        <span
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-lg"
-          style={{
-            background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))",
-            boxShadow: "0 6px 20px -4px var(--accent-glow)",
-          }}
-        >
-          <CreditCard size={18} strokeWidth={2.4} />
-        </span>
+      <Link href="/accueil" className="mb-8 flex items-center gap-2.5 px-2">
+        <FidiLogo size={34} />
         <span className="text-lg font-semibold tracking-tight" style={{ color: "var(--text)" }}>
           FidiCard
         </span>

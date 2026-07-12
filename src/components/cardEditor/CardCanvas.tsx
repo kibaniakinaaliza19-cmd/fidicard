@@ -6,7 +6,7 @@ import type { Layer, TextLayer } from "@/types/layer";
 import { CARD_RATIO } from "@/types/layer";
 import { backgroundToCss } from "@/lib/backgroundStyle";
 import LayerContent from "@/components/cardEditor/LayerContent";
-import { CreditCard } from "lucide-react";
+import FidiLogo from "@/components/ui/FidiLogo";
 
 const HANDLES = [
   { id: "nw", cx: 0, cy: 0 },
@@ -272,18 +272,9 @@ export default function CardCanvas() {
           {/* FidiCard fixed watermark (imposed, non-editable) */}
           <div
             className="pointer-events-none absolute left-[4%] top-[7%] z-[999] flex items-center gap-1"
-            style={{ opacity: 0.9 }}
+            style={{ opacity: 0.92 }}
           >
-            <span
-              className="flex items-center justify-center rounded-md"
-              style={{
-                width: 15,
-                height: 15,
-                background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))",
-              }}
-            >
-              <CreditCard size={9} className="text-white" />
-            </span>
+            <FidiLogo size={16} glow={false} />
             <span className="font-semibold text-white" style={{ fontSize: 9, textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>
               FidiCard
             </span>
