@@ -2,7 +2,8 @@
 
 /**
  * FidiCard brand mark — two interlocking "C" hooks (commerçant + client)
- * that link together, forming a chain-link / bond. Scalable SVG, no raster.
+ * woven into a chain link, tilted, with a gold→orange gradient.
+ * Scalable SVG (no raster asset) so it stays crisp at any size.
  */
 export default function FidiLogo({
   size = 36,
@@ -27,29 +28,31 @@ export default function FidiLogo({
       <defs>
         <linearGradient id="fidiGrad" x1="24" y1="3" x2="24" y2="45" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#ffc21e" />
-          <stop offset="50%" stopColor="#ff7a1f" />
+          <stop offset="48%" stopColor="#ff7a1f" />
           <stop offset="100%" stopColor="#f0441a" />
         </linearGradient>
-        {/* hide the far end of the top hook where the bottom hook passes in front */}
-        <mask id="fidiOverlap">
+        {/* hides the top hook where the bottom hook passes in front → woven link */}
+        <mask id="fidiWeave">
           <rect width="48" height="48" fill="white" />
-          <circle cx="30" cy="30" r="6.6" fill="black" />
+          <circle cx="27.5" cy="30" r="7.9" fill="black" />
         </mask>
       </defs>
 
-      {/* bottom hook (client) — opens up-left */}
-      <circle
-        cx="29" cy="29" r="11.5"
-        fill="none" stroke="url(#fidiGrad)" strokeWidth="8.5" strokeLinecap="round"
-        strokeDasharray="52 74" transform="rotate(-45 29 29)"
-      />
-      {/* top hook (commerçant) — opens down-right, tucked behind the bottom hook at the crossing */}
-      <g mask="url(#fidiOverlap)">
+      <g transform="rotate(-14 24 24)">
+        {/* client hook (bottom), opens up-left */}
         <circle
-          cx="19" cy="19" r="11.5"
-          fill="none" stroke="url(#fidiGrad)" strokeWidth="8.5" strokeLinecap="round"
-          strokeDasharray="52 74" transform="rotate(135 19 19)"
+          cx="27.5" cy="30" r="11"
+          fill="none" stroke="url(#fidiGrad)" strokeWidth="7.4" strokeLinecap="round"
+          strokeDasharray="42.24 26.88" transform="rotate(-35 27.5 30)"
         />
+        {/* commerçant hook (top), opens down-right, tucked behind at the crossing */}
+        <g mask="url(#fidiWeave)">
+          <circle
+            cx="20.5" cy="18" r="11"
+            fill="none" stroke="url(#fidiGrad)" strokeWidth="7.4" strokeLinecap="round"
+            strokeDasharray="42.24 26.88" transform="rotate(145 20.5 18)"
+          />
+        </g>
       </g>
     </svg>
   );

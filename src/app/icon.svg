@@ -1,15 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
   <rect width="48" height="48" rx="10" fill="#0a0a0a"/>
   <defs>
-    <linearGradient id="g" x1="24" y1="4" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+    <linearGradient id="g" x1="24" y1="3" x2="24" y2="45" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#ffc21e"/>
-      <stop offset="50%" stop-color="#ff7a1f"/>
+      <stop offset="48%" stop-color="#ff7a1f"/>
       <stop offset="100%" stop-color="#f0441a"/>
     </linearGradient>
-    <mask id="ov"><rect width="48" height="48" fill="white"/><circle cx="30" cy="30" r="6.6" fill="black"/></mask>
+    <mask id="w"><rect width="48" height="48" fill="white"/><circle cx="27.5" cy="30" r="7.9" fill="black"/></mask>
   </defs>
-  <circle cx="29" cy="29" r="11.5" fill="none" stroke="url(#g)" stroke-width="8.5" stroke-linecap="round" stroke-dasharray="52 74" transform="rotate(-45 29 29)"/>
-  <g mask="url(#ov)">
-    <circle cx="19" cy="19" r="11.5" fill="none" stroke="url(#g)" stroke-width="8.5" stroke-linecap="round" stroke-dasharray="52 74" transform="rotate(135 19 19)"/>
+  <g transform="rotate(-14 24 24)">
+    <circle cx="27.5" cy="30" r="11" fill="none" stroke="url(#g)" stroke-width="7.4" stroke-linecap="round" stroke-dasharray="42.24 26.88" transform="rotate(-35 27.5 30)"/>
+    <g mask="url(#w)">
+      <circle cx="20.5" cy="18" r="11" fill="none" stroke="url(#g)" stroke-width="7.4" stroke-linecap="round" stroke-dasharray="42.24 26.88" transform="rotate(145 20.5 18)"/>
+    </g>
   </g>
 </svg>
