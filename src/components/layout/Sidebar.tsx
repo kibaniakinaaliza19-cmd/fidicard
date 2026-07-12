@@ -16,11 +16,11 @@ import {
 } from "lucide-react";
 import { useUIStore } from "@/store/uiStore";
 
-const navItems = [
+const navItems: { href: string; label: string; icon: typeof Home; badge?: string }[] = [
   { href: "/accueil", label: "Accueil", icon: Home },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/carte", label: "Carte", icon: CreditCard },
-  { href: "/scanner", label: "Scanner", icon: ScanLine, badge: "Bientôt" },
+  { href: "/scanner", label: "Scanner", icon: ScanLine },
   { href: "/analyse", label: "Analyse", icon: BarChart3 },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/reglages", label: "Réglages", icon: Settings },

@@ -13,6 +13,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const setTheme = useUIStore((s) => s.setTheme);
   const pathname = usePathname();
   const fullBleed = pathname?.startsWith("/carte");
+  const publicPage = pathname?.startsWith("/join");
 
   useEffect(() => {
     const current = document.documentElement.getAttribute("data-theme");
@@ -27,6 +28,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.setItem("fidicard-theme", theme);
     } catch {}
   }, [theme]);
+
+  // Public, chrome-less pages (client QR signup) — no sidebar, no dashboard modals.
+  if (publicPage) {
+    return <>{children}</>;
+  }
 
   if (fullBleed) {
     return (
