@@ -6,14 +6,16 @@ import { Link2, Download, Wallet, Smartphone, Check, Rocket } from "lucide-react
 import Modal from "@/components/ui/Modal";
 import { useUIStore } from "@/store/uiStore";
 import { useCardStore } from "@/store/cardStore";
+import { usePublishStore } from "@/store/publishStore";
 
 export default function PublishModal() {
   const open = useUIStore((s) => s.publishModalOpen);
   const setOpen = useUIStore((s) => s.setPublishModalOpen);
   const pushToast = useUIStore((s) => s.pushToast);
   const card = useCardStore((s) => s.card);
+  const published = usePublishStore((s) => s.published);
+  const publish = usePublishStore((s) => s.publish);
   const [copied, setCopied] = useState(false);
-  const [published, setPublished] = useState(false);
 
   const shareUrl = useMemo(() => {
     const slug = card.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -39,8 +41,8 @@ export default function PublishModal() {
   }
 
   function handlePublish() {
-    setPublished(true);
-    pushToast("Carte publiée avec succès");
+    publish();
+    pushToast("Programme publié — votre QR d'inscription est actif.");
   }
 
   return (

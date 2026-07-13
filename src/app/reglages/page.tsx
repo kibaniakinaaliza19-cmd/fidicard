@@ -64,6 +64,9 @@ import {
   type NotifPrefKey,
 } from "@/store/settingsStore";
 import { useSettingsHydration } from "@/components/reglages/useSettingsHydration";
+import { usePublishStore } from "@/store/publishStore";
+import { usePublishHydration, useCardCreated } from "@/lib/usePublish";
+import { getConfigSteps, configProgress } from "@/lib/configSteps";
 import {
   SoonBadge,
   DemoBadge,
@@ -109,6 +112,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof User }[] = [
 
 export default function ReglagesPage() {
   useSettingsHydration();
+  usePublishHydration();
   const [active, setActive] = useState<SectionKey>("overview");
   const reduceMotion = useSettingsStore((s) => s.reduceMotion);
 
@@ -199,19 +203,14 @@ const STATS = [
   { label: "Campagnes actives", value: 3, delta: "+1", icon: TrendingUp },
 ];
 
-const SETUP_STEPS = [
-  { label: "Informations du commerce", done: true },
-  { label: "Logo ajouté", done: true },
-  { label: "Couleurs configurées", done: true },
-  { label: "Carte de fidélité créée", done: true },
-  { label: "Programme publié", done: false },
-];
-
 function OverviewSection({ onGo }: { onGo: (s: SectionKey) => void }) {
   const reduceMotion = useSettingsStore((s) => s.reduceMotion);
   const pushToast = useUIStore((s) => s.pushToast);
-  const doneCount = SETUP_STEPS.filter((s) => s.done).length;
-  const pct = Math.round((doneCount / SETUP_STEPS.length) * 100);
+  const published = usePublishStore((s) => s.published);
+  const cardCreated = useCardCreated();
+  const steps = getConfigSteps(published, cardCreated);
+  const pct = configProgress(steps);
+  const remaining = steps.filter((s) => !s.done).length;
 
   const shortcuts: { label: string; icon: typeof User; href?: string; soon?: boolean }[] = [
     { label: "Créer une carte", icon: CreditCard, href: "/carte" },
@@ -268,8 +267,8 @@ function OverviewSection({ onGo }: { onGo: (s: SectionKey) => void }) {
           </span>
         </div>
         <div className="flex flex-col gap-2">
-          {SETUP_STEPS.map((step) => (
-            <div key={step.label} className="flex items-center gap-2.5 text-sm">
+          {steps.map((step) => (
+            <div key={step.key} className="flex items-center gap-2.5 text-sm">
               <span
                 className="flex h-5 w-5 items-center justify-center rounded-full"
                 style={{
@@ -280,11 +279,19 @@ function OverviewSection({ onGo }: { onGo: (s: SectionKey) => void }) {
                 {step.done ? <Check size={12} /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
               </span>
               <span style={{ color: step.done ? "var(--text)" : "var(--text-dim)" }}>{step.label}</span>
+              {step.key === "card" && !step.done && (
+                <Link href="/carte" className="ml-auto text-xs font-medium text-[var(--accent-1)]">Créer</Link>
+              )}
+              {step.key === "publish" && !step.done && (
+                <Link href="/scanner" className="ml-auto text-xs font-medium text-[var(--accent-1)]">Publier</Link>
+              )}
             </div>
           ))}
         </div>
         <p className="mt-4 text-xs" style={{ color: "var(--text-faint)" }}>
-          Encore 1 étape — cliquez sur « Publier » dans l&rsquo;éditeur de carte pour activer votre QR Code.
+          {remaining === 0
+            ? "Votre programme est prêt — votre QR Code d'inscription est actif."
+            : `Encore ${remaining} étape${remaining > 1 ? "s" : ""} — rendez-vous sur Scanner pour publier votre programme.`}
         </p>
       </SectionCard>
 
