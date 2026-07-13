@@ -1,14 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
-  <rect width="48" height="48" rx="10" fill="#090909"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="-24 -24 48 48" fill="none">
+  <rect x="-24" y="-24" width="48" height="48" rx="10" fill="#090909"/>
   <defs>
-    <linearGradient id="g" x1="12" y1="8" x2="36" y2="40" gradientUnits="userSpaceOnUse">
+    <linearGradient id="g" x1="0" y1="-14" x2="0" y2="14" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FFD54A"/>
       <stop offset="45%" stop-color="#FF8A3D"/>
       <stop offset="100%" stop-color="#E65100"/>
     </linearGradient>
+    <mask id="w"><rect x="-24" y="-24" width="48" height="48" fill="white"/><circle cx="4.91" cy="3.44" r="9.8" fill="black"/></mask>
   </defs>
-  <g fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M13 14 H26 a8 8 0 0 1 8 8"/>
-    <path d="M35 34 H22 a8 8 0 0 1 -8 -8"/>
-  </g>
+  <g transform="translate(4.91 3.44) rotate(35)"><rect x="-12" y="-7" width="24" height="14" rx="7" fill="none" stroke="url(#g)" stroke-width="4.6"/></g>
+  <g mask="url(#w)"><g transform="translate(-4.91 -3.44) rotate(35)"><rect x="-12" y="-7" width="24" height="14" rx="7" fill="none" stroke="url(#g)" stroke-width="4.6"/></g></g>
 </svg>
