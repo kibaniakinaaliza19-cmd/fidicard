@@ -4,6 +4,8 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { autoNotifs, templateCards, scheduled } from "@/data/notifications";
 import { useUIStore } from "@/store/uiStore";
+import { usePlan } from "@/lib/usePlan";
+import { PlanLockBadge } from "@/components/plan/PlanLock";
 
 const tabs = ["Notifications automatiques", "Modèles proposés", "Mes notifications", "Programmées", "Brouillons"];
 
@@ -48,6 +50,7 @@ export default function TabsSection() {
   const [tab, setTab] = useState(tabs[0]);
   const [toggles, setToggles] = useState(() => Object.fromEntries(autoNotifs.map((n) => [n.id, n.enabled])));
   const pushToast = useUIStore((s) => s.pushToast);
+  const { limits } = usePlan();
 
   function toggle(id: string, title: string) {
     setToggles((t) => {
@@ -55,6 +58,10 @@ export default function TabsSection() {
       pushToast(`${title} : ${next ? "activé" : "désactivé"}`);
       return { ...t, [id]: next };
     });
+  }
+
+  function isLocked(id: string) {
+    return id === "google" ? !limits.avisGoogleAuto : !limits.automatisations;
   }
 
   return (
@@ -78,16 +85,28 @@ export default function TabsSection() {
       {tab === "Notifications automatiques" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="space-y-1">
-            {autoNotifs.map((n) => (
-              <div key={n.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-[var(--panel-soft)]">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg text-base" style={{ background: "var(--border)" }}>{n.emoji}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" style={{ color: "var(--text)" }}>{n.title}</p>
-                  <p className="truncate text-[11px]" style={{ color: "var(--text-faint)" }}>{n.description}</p>
+            {autoNotifs.map((n) => {
+              const locked = isLocked(n.id);
+              return (
+                <div key={n.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-[var(--panel-soft)]">
+                  <span
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-base"
+                    style={{ background: "var(--border)", opacity: locked ? 0.5 : 1 }}
+                  >
+                    {n.emoji}
+                  </span>
+                  <div className="min-w-0 flex-1" style={{ opacity: locked ? 0.5 : 1 }}>
+                    <p className="truncate text-sm font-medium" style={{ color: "var(--text)" }}>{n.title}</p>
+                    <p className="truncate text-[11px]" style={{ color: "var(--text-faint)" }}>{n.description}</p>
+                  </div>
+                  {locked ? (
+                    <PlanLockBadge requiredPlan="pro" />
+                  ) : (
+                    <Toggle on={toggles[n.id]} onChange={() => toggle(n.id, n.title)} />
+                  )}
                 </div>
-                <Toggle on={toggles[n.id]} onChange={() => toggle(n.id, n.title)} />
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div>
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>Performance estimée</p>

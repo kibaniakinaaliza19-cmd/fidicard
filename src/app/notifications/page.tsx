@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Bell, LayoutGrid, Plus } from "lucide-react";
 import KpiRow from "@/components/notifications/KpiRow";
+import NotifQuotaBar from "@/components/notifications/NotifQuotaBar";
 import ImpactCard from "@/components/notifications/ImpactCard";
 import PreviewColumn from "@/components/notifications/PreviewColumn";
 import TabsSection from "@/components/notifications/TabsSection";
@@ -42,6 +43,7 @@ export default function NotificationsPage() {
       </header>
 
       <div className="space-y-5 px-8 pb-10">
+        <NotifQuotaBar />
         <KpiRow />
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_360px]">

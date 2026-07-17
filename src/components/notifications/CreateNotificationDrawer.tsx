@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Check, Smartphone, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { X, Check, Smartphone, Send, CheckCircle2, AlertCircle, Lock } from "lucide-react";
 import { IphonePreview } from "./PushPreview";
 import {
   notifTypes,
@@ -11,11 +12,23 @@ import {
   type PushSample,
 } from "@/data/notifications";
 import { useUIStore } from "@/store/uiStore";
+import { usePlan } from "@/lib/usePlan";
+import { useNotificationsLogStore, useSentThisMonth } from "@/store/notificationsLogStore";
 
 type Schedule = "now" | "date" | "repeat";
 
 export default function CreateNotificationDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pushToast = useUIStore((s) => s.pushToast);
+  const { limits } = usePlan();
+  const hydrateLog = useNotificationsLogStore((s) => s.hydrate);
+  const logSend = useNotificationsLogStore((s) => s.logSend);
+  const sentThisMonth = useSentThisMonth();
+
+  useEffect(() => {
+    hydrateLog();
+  }, [hydrateLog]);
+
+  const quotaReached = limits.notifsParMois !== -1 && sentThisMonth >= limits.notifsParMois;
 
   const [type, setType] = useState("event");
   const [emoji, setEmoji] = useState("⚽");
@@ -56,10 +69,15 @@ export default function CreateNotificationDrawer({ open, onClose }: { open: bool
   }
 
   function handleSend() {
+    if (quotaReached) {
+      pushToast("Limite de notifications atteinte pour ce mois");
+      return;
+    }
     if (!allOk) {
       pushToast("Complétez la campagne avant l'envoi");
       return;
     }
+    logSend(title);
     pushToast(schedule === "now" ? "Campagne envoyée 🚀" : "Campagne programmée ✅");
     onClose();
   }
@@ -235,6 +253,18 @@ export default function CreateNotificationDrawer({ open, onClose }: { open: bool
               </div>
             </div>
 
+            {quotaReached && (
+              <div
+                className="mx-6 mb-3 flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs"
+                style={{ borderColor: "rgba(232,80,61,0.35)", background: "rgba(232,80,61,0.08)", color: "#E8503D" }}
+              >
+                <Lock size={14} />
+                Limite atteinte — passez au plan supérieur pour en envoyer plus.
+                <Link href="/reglages?tab=subscription" onClick={onClose} className="ml-auto shrink-0 underline underline-offset-2">
+                  Voir les plans
+                </Link>
+              </div>
+            )}
             <div className="flex items-center gap-2 border-t px-6 py-4" style={{ borderColor: "var(--border)" }}>
               <button
                 onClick={() => pushToast("Notification test envoyée 📲")}
@@ -245,10 +275,16 @@ export default function CreateNotificationDrawer({ open, onClose }: { open: bool
               </button>
               <button
                 onClick={handleSend}
-                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
-                style={{ background: allOk ? "linear-gradient(135deg, var(--accent-1), var(--accent-2))" : "var(--border-strong)", boxShadow: allOk ? "0 8px 20px -8px var(--accent-glow)" : "none" }}
+                disabled={quotaReached}
+                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:hover:scale-100"
+                style={{
+                  background: quotaReached ? "var(--border-strong)" : allOk ? "linear-gradient(135deg, var(--accent-1), var(--accent-2))" : "var(--border-strong)",
+                  boxShadow: allOk && !quotaReached ? "0 8px 20px -8px var(--accent-glow)" : "none",
+                  opacity: quotaReached ? 0.7 : 1,
+                }}
               >
-                <Send size={15} /> {schedule === "now" ? "Envoyer maintenant" : "Programmer"}
+                {quotaReached ? <Lock size={15} /> : <Send size={15} />}
+                {quotaReached ? "Limite atteinte" : schedule === "now" ? "Envoyer maintenant" : "Programmer"}
               </button>
             </div>
           </motion.div>

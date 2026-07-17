@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Info,
@@ -67,6 +67,9 @@ import { useSettingsHydration } from "@/components/reglages/useSettingsHydration
 import { usePublishStore } from "@/store/publishStore";
 import { usePublishHydration, useCardCreated } from "@/lib/usePublish";
 import { getConfigSteps, configProgress } from "@/lib/configSteps";
+import { usePlan } from "@/lib/usePlan";
+import { PLAN_LIMITS, PLAN_ORDER, nextPlan, type Plan } from "@/lib/plans";
+import { PlanLockBadge } from "@/components/plan/PlanLock";
 import {
   SoonBadge,
   DemoBadge,
@@ -110,10 +113,25 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof User }[] = [
 /*  Page                                                                       */
 /* -------------------------------------------------------------------------- */
 
+const SECTION_KEYS = new Set(SECTIONS.map((s) => s.key));
+function isSectionKey(v: string | null): v is SectionKey {
+  return !!v && SECTION_KEYS.has(v as SectionKey);
+}
+
 export default function ReglagesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReglagesInner />
+    </Suspense>
+  );
+}
+
+function ReglagesInner() {
   useSettingsHydration();
   usePublishHydration();
-  const [active, setActive] = useState<SectionKey>("overview");
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [active, setActive] = useState<SectionKey>(isSectionKey(initialTab) ? initialTab : "overview");
   const reduceMotion = useSettingsStore((s) => s.reduceMotion);
 
   return (
@@ -527,8 +545,34 @@ const INVOICES = [
   { id: "FID-2026-05", date: "1 mai 2026", amount: "69,90 €" },
 ];
 
+function planFeatureLines(limits: (typeof PLAN_LIMITS)[Plan]): string[] {
+  const lines: string[] = [
+    limits.notifsParMois === -1 ? "Notifications illimitées" : `${limits.notifsParMois} notifications / mois`,
+  ];
+  if (limits.avisGoogleAuto) lines.push("Avis Google automatisés");
+  if (limits.automatisations) lines.push("Automatisations (anniversaire, client inactif)");
+  if (limits.statsAvancees) lines.push("Statistiques avancées");
+  if (limits.multiEtablissements) lines.push("Multi-établissements");
+  return lines;
+}
+
+function planUpgradeLines(current: (typeof PLAN_LIMITS)[Plan], upgraded: (typeof PLAN_LIMITS)[Plan]): string[] {
+  const lines: string[] = [];
+  if (upgraded.notifsParMois === -1 && current.notifsParMois !== -1) lines.push("Notifications illimitées");
+  else if (upgraded.notifsParMois > current.notifsParMois) lines.push(`${upgraded.notifsParMois} notifications / mois (au lieu de ${current.notifsParMois})`);
+  if (upgraded.avisGoogleAuto && !current.avisGoogleAuto) lines.push("Avis Google automatisés");
+  if (upgraded.automatisations && !current.automatisations) lines.push("Automatisations (anniversaire, client inactif)");
+  if (upgraded.statsAvancees && !current.statsAvancees) lines.push("Statistiques avancées");
+  if (upgraded.multiEtablissements && !current.multiEtablissements) lines.push("Multi-établissements");
+  return lines;
+}
+
 function SubscriptionSection() {
   const pushToast = useUIStore((s) => s.pushToast);
+  const { plan, limits, setPlan } = usePlan();
+  const upgrade = nextPlan(plan);
+  const upgradeLines = upgrade ? planUpgradeLines(limits, PLAN_LIMITS[upgrade]) : [];
+
   return (
     <>
       <SectionCard>
@@ -537,13 +581,13 @@ function SubscriptionSection() {
             <Crown size={22} className="mt-0.5 text-[var(--accent-1)]" />
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-base font-semibold" style={{ color: "var(--text)" }}>Plan Premium</p>
+                <p className="text-base font-semibold" style={{ color: "var(--text)" }}>Plan {limits.label}</p>
                 <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ background: "#4CAF7D26", color: "#4CAF7D" }}>
                   Actif
                 </span>
               </div>
               <p className="mt-1 text-sm" style={{ color: "var(--text-dim)" }}>
-                69,90 €/mois — Statistiques avancées, notifications personnalisées, avis Google automatisés.
+                {limits.prix}/mois — {planFeatureLines(limits).join(", ")}.
               </p>
               <p className="mt-1 text-xs" style={{ color: "var(--text-faint)" }}>
                 Prochain renouvellement le 1 août 2026
@@ -568,6 +612,64 @@ function SubscriptionSection() {
               Annuler l&rsquo;abonnement
             </button>
           </div>
+        </div>
+      </SectionCard>
+
+      {upgrade && (
+        <SectionCard
+          title={`Débloquez plus avec ${PLAN_LIMITS[upgrade].label}`}
+          subtitle={`${PLAN_LIMITS[upgrade].prix}/mois`}
+          right={
+            <button
+              type="button"
+              onClick={() => {
+                setPlan(upgrade);
+                pushToast(`Passé au plan ${PLAN_LIMITS[upgrade].label} (démo).`);
+              }}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold text-white transition-transform hover:scale-[1.03]"
+              style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
+            >
+              <Zap size={13} /> Passer à {PLAN_LIMITS[upgrade].label}
+            </button>
+          }
+        >
+          <ul className="flex flex-col gap-2">
+            {upgradeLines.map((line) => (
+              <li key={line} className="flex items-center gap-2.5 text-sm" style={{ color: "var(--text)" }}>
+                <Check size={14} className="shrink-0 text-[#4CAF7D]" /> {line}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
+      <SectionCard title="Changer de plan" subtitle="Contrôle de démonstration — simule le plan de votre commerce sans paiement réel.">
+        <div className="grid grid-cols-3 gap-2">
+          {PLAN_ORDER.map((p) => {
+            const on = plan === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => {
+                  if (!on) {
+                    setPlan(p);
+                    pushToast(`Plan ${PLAN_LIMITS[p].label} activé (démo).`);
+                  }
+                }}
+                className="flex flex-col items-center gap-1 rounded-xl border py-3 text-center transition-colors"
+                style={{
+                  borderColor: on ? "var(--accent-1)" : "var(--border-strong)",
+                  background: on ? "var(--accent-glow)" : "transparent",
+                }}
+              >
+                <span className="text-sm font-semibold" style={{ color: on ? "var(--accent-1)" : "var(--text)" }}>
+                  {PLAN_LIMITS[p].label}
+                </span>
+                <span className="text-xs" style={{ color: "var(--text-faint)" }}>{PLAN_LIMITS[p].prix}/mois</span>
+              </button>
+            );
+          })}
         </div>
       </SectionCard>
 
@@ -682,20 +784,21 @@ function AppearanceSection() {
 function NotificationsSection() {
   const notif = useSettingsStore((s) => s.notif);
   const toggleNotif = useSettingsStore((s) => s.toggleNotif);
+  const { limits } = usePlan();
 
   const channels: { key: NotifPrefKey; label: string; icon: typeof Bell }[] = [
     { key: "push", label: "Notifications Push", icon: Bell },
     { key: "email", label: "Emails", icon: Mail },
     { key: "sms", label: "SMS", icon: Smartphone },
   ];
-  const events: { key: NotifPrefKey; label: string }[] = [
-    { key: "birthday", label: "Anniversaire client" },
+  const events: { key: NotifPrefKey; label: string; locked?: boolean }[] = [
+    { key: "birthday", label: "Anniversaire client", locked: !limits.automatisations },
     { key: "loyal", label: "Client fidèle" },
     { key: "cardCreated", label: "Carte créée" },
     { key: "cardUsed", label: "Carte utilisée" },
     { key: "promos", label: "Offres promotionnelles" },
     { key: "campaigns", label: "Campagnes" },
-    { key: "googleReviews", label: "Nouveaux avis Google" },
+    { key: "googleReviews", label: "Nouveaux avis Google", locked: !limits.avisGoogleAuto },
   ];
 
   return (
@@ -719,7 +822,8 @@ function NotificationsSection() {
             <SettingRow
               key={e.key}
               label={e.label}
-              control={<Toggle checked={notif[e.key]} onChange={() => toggleNotif(e.key)} />}
+              muted={e.locked}
+              control={e.locked ? <PlanLockBadge requiredPlan="pro" /> : <Toggle checked={notif[e.key]} onChange={() => toggleNotif(e.key)} />}
             />
           ))}
         </div>

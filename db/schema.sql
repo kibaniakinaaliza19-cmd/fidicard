@@ -13,6 +13,25 @@ create table if not exists users (
   date_creation timestamptz not null default now()
 );
 
+create table if not exists commerces (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references users (id) on delete cascade,
+  nom text not null,
+  plan text not null default 'starter' check (plan in ('starter', 'pro', 'business')),
+  created_at timestamptz not null default now()
+);
+
+-- One row per notification actually sent, used to enforce the plan's
+-- monthly quota (PLAN_LIMITS.notifsParMois in src/lib/plans.ts).
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  commerce_id uuid not null references commerces (id) on delete cascade,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_notifications_commerce_id on notifications (commerce_id);
+
 create table if not exists templates (
   id uuid primary key default gen_random_uuid(),
   nom text not null,
