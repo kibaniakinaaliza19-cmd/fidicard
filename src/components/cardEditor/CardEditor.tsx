@@ -7,6 +7,7 @@ import TopToolbar from "@/components/cardEditor/TopToolbar";
 import CardCanvas from "@/components/cardEditor/CardCanvas";
 import BottomBar from "@/components/cardEditor/BottomBar";
 import RightPanel from "@/components/cardEditor/RightPanel";
+import ImportCardModal from "@/components/cardEditor/importFlow/ImportCardModal";
 import { useCardShortcuts } from "@/lib/useCardShortcuts";
 import { useAutosaveCard } from "@/lib/useAutosaveCard";
 import { useCardStore } from "@/store/cardStore";
@@ -34,6 +35,7 @@ export default function CardEditor() {
         </div>
         <RightPanel />
       </div>
+      <ImportCardModal />
     </div>
   );
 }

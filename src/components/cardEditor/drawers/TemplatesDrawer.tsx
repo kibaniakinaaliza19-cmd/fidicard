@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, ScanSearch } from "lucide-react";
 import DrawerShell from "./DrawerShell";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import { useCardStore } from "@/store/cardStore";
@@ -35,6 +35,7 @@ function docFor(t: TemplateEntry): CardDoc {
 export default function TemplatesDrawer() {
   const applyTemplate = useCardStore((s) => s.applyTemplate);
   const pushToast = useUIStore((s) => s.pushToast);
+  const setImportCardOpen = useUIStore((s) => s.setImportCardOpen);
   const [sector, setSector] = useState("Tous");
   const [query, setQuery] = useState("");
 
@@ -68,6 +69,23 @@ export default function TemplatesDrawer() {
 
   return (
     <DrawerShell title="Modèles de cartes">
+      {/* main action: AI import of an existing card */}
+      <button
+        onClick={() => setImportCardOpen(true)}
+        className="mb-4 flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors hover:border-[var(--accent-1)]"
+        style={{ borderColor: "var(--border-strong)", background: "var(--accent-glow)" }}
+      >
+        <ScanSearch size={20} className="shrink-0 text-[var(--accent-1)]" />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold" style={{ color: "var(--text)" }}>
+            Importer ma carte existante
+          </span>
+          <span className="block text-[11px]" style={{ color: "var(--text-dim)" }}>
+            Photo ou image — reconstruite par IA
+          </span>
+        </span>
+      </button>
+
       <div className="mb-3 flex items-center gap-2 rounded-lg border px-2.5 py-2" style={{ borderColor: "var(--border-strong)" }}>
         <Search size={14} style={{ color: "var(--text-faint)" }} />
         <input
