@@ -10,34 +10,30 @@ import {
   ArrowLeft,
   Sparkles,
   Info,
+  Eye,
+  EyeOff,
+  Type,
+  CircleDot,
+  QrCode,
+  Barcode,
+  ImageIcon,
 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import { useUIStore } from "@/store/uiStore";
 import { useCardStore } from "@/store/cardStore";
+import { CARD_RATIO } from "@/types/layer";
 import {
   analyzeCardImage,
-  rotateImage,
   ANALYSIS_STEPS,
+  rotateImage,
   type ImportAnalysis,
 } from "@/lib/cardImport";
-import { buildFromSpec, type TemplateSpec } from "@/data/templateCatalog";
-import { rewardIconOptions, getIcon } from "@/lib/icons";
+import { defaultChoices, importToCard, type ImportChoices } from "@/lib/importToCard";
 
-type Step = "upload" | "preview" | "analyzing" | "review";
+type Step = "upload" | "adjust" | "analyzing" | "review";
 
 const MAX_SIZE = 8 * 1024 * 1024; // 8 Mo
-
-interface ReviewFields {
-  business: string;
-  tagline: string;
-  loyalty: "tampons" | "points";
-  goal: number;
-  reward: string;
-  icon: string;
-  bg: string;
-  accent: string;
-}
 
 export default function ImportCardModal() {
   const open = useUIStore((s) => s.importCardOpen);
@@ -47,25 +43,28 @@ export default function ImportCardModal() {
 
   const [step, setStep] = useState<Step>("upload");
   const [image, setImage] = useState<string | null>(null);
+  const [fineDeg, setFineDeg] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [analysis, setAnalysis] = useState<ImportAnalysis | null>(null);
-  const [fields, setFields] = useState<ReviewFields | null>(null);
+  const [choices, setChoices] = useState<ImportChoices | null>(null);
+  const [showOverlay, setShowOverlay] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function reset() {
     setStep("upload");
     setImage(null);
+    setFineDeg(0);
     setError(null);
     setProgress(0);
     setAnalysis(null);
-    setFields(null);
+    setChoices(null);
+    setShowOverlay(true);
   }
 
   function close() {
     setOpen(false);
-    // let the exit animation play before wiping state
-    setTimeout(reset, 250);
+    setTimeout(reset, 250); // laisser l'animation de sortie se jouer
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -80,13 +79,14 @@ export default function ImportCardModal() {
     reader.onerror = () => setError("Impossible de lire ce fichier. Essayez une autre image (JPG, PNG, WebP).");
     reader.onload = () => {
       setError(null);
+      setFineDeg(0);
       setImage(reader.result as string);
-      setStep("preview");
+      setStep("adjust");
     };
     reader.readAsDataURL(file);
   }
 
-  async function rotate() {
+  async function quarterTurn() {
     if (!image) return;
     setImage(await rotateImage(image));
   }
@@ -95,19 +95,11 @@ export default function ImportCardModal() {
     if (!image) return;
     setStep("analyzing");
     setProgress(0);
+    setError(null);
     try {
-      const result = await analyzeCardImage(image, (i) => setProgress(i));
+      const result = await analyzeCardImage(image, (i) => setProgress(i), { fineRotation: fineDeg });
       setAnalysis(result);
-      setFields({
-        business: result.suggested.business,
-        tagline: result.suggested.tagline,
-        loyalty: result.suggested.loyalty,
-        goal: result.suggested.goal,
-        reward: result.suggested.reward,
-        icon: result.suggested.icon,
-        bg: result.palette.bg,
-        accent: result.palette.accent,
-      });
+      setChoices(defaultChoices(result));
       setStep("review");
     } catch {
       setError("L'analyse a échoué — l'image semble illisible. Reprenez une photo plus nette et bien éclairée.");
@@ -115,39 +107,51 @@ export default function ImportCardModal() {
     }
   }
 
-  // live preview of the reconstructed card, rebuilt from the verified fields
+  // aperçu en direct de la carte reconstruite, recalculé à chaque choix
   const previewDoc = useMemo(() => {
-    if (!fields || !analysis) return null;
-    return buildFromSpec(specFrom(fields, analysis));
-  }, [fields, analysis]);
+    if (!analysis || !choices) return null;
+    return importToCard(analysis, choices);
+  }, [analysis, choices]);
+
+  const elementCount = previewDoc?.layers.length ?? 0;
 
   function createCard() {
-    if (!fields || !analysis) return;
-    applyTemplate(buildFromSpec(specFrom(fields, analysis)));
-    pushToast("Carte importée — chaque élément est modifiable.");
+    if (!analysis || !choices) return;
+    applyTemplate(importToCard(analysis, choices));
+    pushToast(
+      elementCount > 0
+        ? `Carte importée — ${elementCount} élément(s) sélectionnables + le fond.`
+        : "Carte importée en fond — ajoutez vos éléments par-dessus.",
+    );
     close();
   }
+
+  function importAsBackground() {
+    if (!analysis) return;
+    applyTemplate(
+      importToCard(analysis, {
+        ...defaultChoices(analysis),
+        texts: analysis.texts.map((t) => ({ id: t.id, keep: false, content: t.content })),
+        convertStamps: false,
+        qrMode: "keep",
+        addFidiQr: false,
+        addBarcode: false,
+      }),
+    );
+    pushToast("Image importée en fond de carte.");
+    close();
+  }
+
+  const patch = (p: Partial<ImportChoices>) => setChoices((c) => (c ? { ...c, ...p } : c));
 
   return (
     <Modal
       open={open}
       onClose={close}
       title="Importer ma carte existante"
-      subtitle="Transformez votre carte papier en carte FidiCard modifiable."
+      subtitle="Votre carte devient une carte FidiCard : chaque élément détecté est recréé, sélectionnable et modifiable."
       wide
     >
-      {/* honest demo note */}
-      <div
-        className="mb-5 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-xs leading-relaxed"
-        style={{ borderColor: "var(--border-strong)", background: "var(--panel-soft)", color: "var(--text-dim)" }}
-      >
-        <Info size={14} className="mt-0.5 shrink-0 text-[var(--accent-1)]" />
-        <span>
-          Démo : les <strong>couleurs</strong> sont réellement extraites de votre image. La lecture des textes, du logo
-          et des règles arrive avec le moteur IA — vérifiez et complétez les champs proposés.
-        </span>
-      </div>
-
       {error && (
         <div
           className="mb-4 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-xs"
@@ -158,7 +162,7 @@ export default function ImportCardModal() {
         </div>
       )}
 
-      {/* ---------------- upload ---------------- */}
+      {/* ---------------- 1 · téléversement ---------------- */}
       {step === "upload" && (
         <div>
           <button
@@ -173,22 +177,53 @@ export default function ImportCardModal() {
             </span>
           </button>
           <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
-          <p className="mt-4 text-center text-xs" style={{ color: "var(--text-faint)" }}>
-            Conseil : photographiez la carte à plat, bien éclairée, sans reflet.
-          </p>
+          <div
+            className="mt-4 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-xs leading-relaxed"
+            style={{ borderColor: "var(--border-strong)", background: "var(--panel-soft)", color: "var(--text-dim)" }}
+          >
+            <Info size={14} className="mt-0.5 shrink-0 text-[var(--accent-1)]" />
+            <span>
+              L&rsquo;analyse tourne <strong>entièrement dans votre navigateur</strong> : couleurs, textes (OCR), tampons
+              et QR code sont détectés puis recréés en éléments modifiables. Rien n&rsquo;est envoyé sur un serveur.
+              Conseil : photographiez la carte à plat, bien éclairée, sans reflet.
+            </span>
+          </div>
         </div>
       )}
 
-      {/* ---------------- preview / rotate ---------------- */}
-      {step === "preview" && image && (
+      {/* ---------------- 2 · cadrage ---------------- */}
+      {step === "adjust" && image && (
         <div className="flex flex-col items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={image}
-            alt="Votre carte"
-            className="max-h-[300px] w-auto max-w-full rounded-xl border object-contain"
-            style={{ borderColor: "var(--border-strong)" }}
-          />
+          <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--border-strong)" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={image}
+              alt="Votre carte"
+              className="max-h-[280px] w-auto max-w-full object-contain transition-transform"
+              style={{ transform: `rotate(${fineDeg}deg)` }}
+            />
+          </div>
+
+          <label className="mt-4 flex w-full max-w-sm items-center gap-3 text-xs" style={{ color: "var(--text-dim)" }}>
+            <span className="w-24 shrink-0">Redresser {fineDeg !== 0 ? `(${fineDeg}°)` : ""}</span>
+            <input
+              type="range"
+              min={-15}
+              max={15}
+              step={1}
+              value={fineDeg}
+              onChange={(e) => setFineDeg(Number(e.target.value))}
+              className="w-full accent-[var(--accent-1)]"
+            />
+            <button
+              onClick={() => setFineDeg(0)}
+              className="cursor-pointer text-[11px] font-medium hover:text-[var(--accent-1)]"
+              style={{ color: "var(--text-faint)" }}
+            >
+              0°
+            </button>
+          </label>
+
           <div className="mt-5 flex w-full items-center gap-2">
             <button
               onClick={() => { setStep("upload"); setImage(null); }}
@@ -198,30 +233,27 @@ export default function ImportCardModal() {
               <ArrowLeft size={15} /> Changer
             </button>
             <button
-              onClick={rotate}
+              onClick={quarterTurn}
               className="flex cursor-pointer items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-sm font-medium"
               style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
             >
-              <RotateCw size={15} /> Pivoter
+              <RotateCw size={15} /> Pivoter 90°
             </button>
             <button
               onClick={launchAnalysis}
               className="ml-auto flex cursor-pointer items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
               style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))", boxShadow: "0 8px 20px -8px var(--accent-glow)" }}
             >
-              <ScanSearch size={16} /> Lancer l&rsquo;analyse
+              <ScanSearch size={16} /> Analyser ma carte
             </button>
           </div>
         </div>
       )}
 
-      {/* ---------------- analyzing ---------------- */}
+      {/* ---------------- 3 · analyse ---------------- */}
       {step === "analyzing" && (
         <div className="flex flex-col items-center py-6">
-          <span
-            className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
-            style={{ background: "var(--accent-glow)" }}
-          >
+          <span className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: "var(--accent-glow)" }}>
             <ScanSearch size={28} className="animate-pulse text-[var(--accent-1)]" />
           </span>
           <div className="w-full max-w-sm space-y-2.5">
@@ -240,127 +272,236 @@ export default function ImportCardModal() {
               </div>
             ))}
           </div>
+          {progress === 3 && (
+            <p className="mt-5 max-w-sm text-center text-[11px] leading-relaxed" style={{ color: "var(--text-faint)" }}>
+              Première analyse : le module de lecture des textes se télécharge (~15 Mo), cela peut prendre un moment.
+              Les analyses suivantes seront bien plus rapides.
+            </p>
+          )}
         </div>
       )}
 
-      {/* ---------------- review ---------------- */}
-      {step === "review" && fields && analysis && previewDoc && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_280px]">
-          <div className="space-y-4">
-            {analysis.lowQuality && (
-              <div
-                className="flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-xs"
-                style={{ borderColor: "rgba(244,185,66,0.35)", background: "rgba(244,185,66,0.08)", color: "#F4B942" }}
+      {/* ---------------- 4 · révision ---------------- */}
+      {step === "review" && analysis && choices && previewDoc && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
+          {/* colonne visuelle */}
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+              Carte reconstruite (en direct)
+            </p>
+            <MiniCard doc={previewDoc} width={280} />
+
+            <div className="mt-2 flex w-full items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+                Détections sur l&rsquo;original
+              </p>
+              <button
+                onClick={() => setShowOverlay((v) => !v)}
+                className="flex cursor-pointer items-center gap-1 text-[11px] font-medium hover:text-[var(--accent-1)]"
+                style={{ color: "var(--text-dim)" }}
               >
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                Image de faible résolution — les couleurs extraites peuvent être approximatives. Vous pouvez reprendre
-                une photo plus nette, ou continuer et ajuster à la main.
+                {showOverlay ? <EyeOff size={12} /> : <Eye size={12} />}
+                {showOverlay ? "Masquer" : "Afficher"}
+              </button>
+            </div>
+            <div
+              className="relative w-[280px] overflow-hidden rounded-lg border"
+              style={{ aspectRatio: `${CARD_RATIO}`, borderColor: "var(--border)" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={analysis.originalDataUrl} alt="Carte d'origine" className="absolute inset-0 h-full w-full object-cover" />
+              {showOverlay && (
+                <>
+                  {analysis.texts.map((t) => (
+                    <span
+                      key={t.id}
+                      className="absolute rounded-sm border"
+                      style={{
+                        left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%`,
+                        borderColor: t.masked ? "#4CAF7D" : "#F4B942",
+                        background: t.masked ? "rgba(76,175,125,0.12)" : "rgba(244,185,66,0.10)",
+                      }}
+                    />
+                  ))}
+                  {analysis.stamps.map((s, i) => (
+                    <span
+                      key={i}
+                      className="absolute rounded-full border-2"
+                      style={{ left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, borderColor: "#38bdf8" }}
+                    />
+                  ))}
+                  {analysis.qr && (
+                    <span
+                      className="absolute border-2"
+                      style={{ left: `${analysis.qr.x}%`, top: `${analysis.qr.y}%`, width: `${analysis.qr.w}%`, height: `${analysis.qr.h}%`, borderColor: "#a855f7" }}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* palette extraite */}
+            <div className="flex w-full items-center gap-1.5">
+              {analysis.palette.map((c) => (
+                <span key={c} title={c} className="h-6 flex-1 rounded-md border" style={{ background: c, borderColor: "var(--border)" }} />
+              ))}
+            </div>
+            <p className="flex items-center gap-1 self-start text-[11px]" style={{ color: "#4CAF7D" }}>
+              <Check size={12} /> Palette réellement extraite de votre image
+            </p>
+          </div>
+
+          {/* colonne choix */}
+          <div className="min-w-0 space-y-4">
+            {analysis.warnings.length > 0 && (
+              <div
+                className="space-y-1 rounded-xl border px-3.5 py-2.5 text-xs leading-relaxed"
+                style={{ borderColor: "rgba(244,185,66,0.35)", background: "rgba(244,185,66,0.07)", color: "#F4B942" }}
+              >
+                {analysis.warnings.map((w) => (
+                  <p key={w} className="flex items-start gap-2">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" /> {w}
+                  </p>
+                ))}
               </div>
             )}
 
-            <Field label="Nom du commerce">
-              <input value={fields.business} onChange={(e) => setFields({ ...fields, business: e.target.value })} className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent-1)]" style={{ borderColor: "var(--border-strong)", color: "var(--text)" }} />
-            </Field>
-            <Field label="Slogan">
-              <input value={fields.tagline} onChange={(e) => setFields({ ...fields, tagline: e.target.value })} className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent-1)]" style={{ borderColor: "var(--border-strong)", color: "var(--text)" }} />
-            </Field>
-
-            <Field label="Programme de fidélité détecté">
-              <div className="flex gap-2">
-                {(["tampons", "points"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setFields({ ...fields, loyalty: mode })}
-                    className="flex-1 cursor-pointer rounded-lg border py-2 text-xs font-medium capitalize transition-colors"
-                    style={{
-                      borderColor: fields.loyalty === mode ? "var(--accent-1)" : "var(--border)",
-                      background: fields.loyalty === mode ? "var(--accent-glow)" : "var(--panel-soft)",
-                      color: fields.loyalty === mode ? "var(--accent-1)" : "var(--text-dim)",
-                    }}
-                  >
-                    {mode}
-                  </button>
-                ))}
-                <input
-                  type="number"
-                  min={1}
-                  max={fields.loyalty === "tampons" ? 10 : 10000}
-                  value={fields.goal}
-                  onChange={(e) => setFields({ ...fields, goal: Math.max(1, Number(e.target.value) || 1) })}
-                  className="w-20 rounded-lg border bg-transparent px-2 py-2 text-center text-sm outline-none focus:border-[var(--accent-1)]"
-                  style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
-                  title={fields.loyalty === "tampons" ? "Nombre de tampons" : "Objectif de points"}
-                />
-              </div>
+            <Field label="Nom de la carte">
+              <input
+                value={choices.cardName}
+                onChange={(e) => patch({ cardName: e.target.value })}
+                className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent-1)]"
+                style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+              />
             </Field>
 
-            <Field label="Récompense détectée">
-              <input value={fields.reward} onChange={(e) => setFields({ ...fields, reward: e.target.value })} className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--accent-1)]" style={{ borderColor: "var(--border-strong)", color: "var(--text)" }} />
-            </Field>
-
-            <Field label="Couleurs extraites de votre carte">
-              <div className="flex items-center gap-3">
-                <ColorSwatch label="Fond" value={fields.bg} onChange={(v) => setFields({ ...fields, bg: v })} />
-                <ColorSwatch label="Accent" value={fields.accent} onChange={(v) => setFields({ ...fields, accent: v })} />
-                <span className="ml-auto flex items-center gap-1 text-[11px]" style={{ color: "#4CAF7D" }}>
-                  <Check size={12} /> extraites de l&rsquo;image
-                </span>
-              </div>
-            </Field>
-
-            <Field label="Icône des tampons">
-              <div className="flex flex-wrap gap-1.5">
-                {rewardIconOptions.map((name) => {
-                  const Icon = getIcon(name);
-                  const on = fields.icon === name;
+            {/* textes détectés */}
+            <Field
+              label={`Textes détectés (${analysis.texts.length})`}
+              icon={<Type size={13} />}
+              hint={analysis.texts.length ? "Corrigez la lecture si besoin ; décochez pour ne pas recréer un texte." : "Aucun texte lu — ils restent dans l'image de fond."}
+            >
+              <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                {analysis.texts.map((t) => {
+                  const tc = choices.texts.find((x) => x.id === t.id)!;
                   return (
-                    <button
-                      key={name}
-                      onClick={() => setFields({ ...fields, icon: name })}
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border transition-colors"
-                      style={{
-                        borderColor: on ? "var(--accent-1)" : "var(--border)",
-                        background: on ? "var(--accent-glow)" : "var(--panel-soft)",
-                        color: on ? "var(--accent-1)" : "var(--text-dim)",
-                      }}
-                    >
-                      <Icon size={16} />
-                    </button>
+                    <div key={t.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={tc.keep}
+                        onChange={(e) =>
+                          patch({ texts: choices.texts.map((x) => (x.id === t.id ? { ...x, keep: e.target.checked } : x)) })
+                        }
+                        className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--accent-1)]"
+                      />
+                      <input
+                        value={tc.content}
+                        onChange={(e) =>
+                          patch({ texts: choices.texts.map((x) => (x.id === t.id ? { ...x, content: e.target.value } : x)) })
+                        }
+                        className="w-full min-w-0 rounded-lg border bg-transparent px-2.5 py-1.5 text-xs outline-none focus:border-[var(--accent-1)]"
+                        style={{ borderColor: "var(--border)", color: "var(--text)", opacity: tc.keep ? 1 : 0.5 }}
+                      />
+                      <span
+                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                        style={{
+                          background: t.masked ? "rgba(76,175,125,0.15)" : "rgba(244,185,66,0.15)",
+                          color: t.masked ? "#4CAF7D" : "#F4B942",
+                        }}
+                        title={t.masked ? "Texte isolé du fond — recréé sans doublon" : "Encore visible dans l'image de fond — le recréer peut doubler le texte"}
+                      >
+                        {t.masked ? "isolé" : "dans le fond"}
+                      </span>
+                    </div>
                   );
                 })}
               </div>
             </Field>
-          </div>
 
-          {/* live preview */}
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
-              Carte reconstruite
-            </p>
-            <MiniCard doc={previewDoc} width={260} />
-            {image && (
-              <>
-                <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
-                  Votre carte d&rsquo;origine
-                </p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image} alt="Original" className="max-h-[120px] w-auto max-w-full rounded-lg border object-contain opacity-80" style={{ borderColor: "var(--border)" }} />
-              </>
+            {/* tampons */}
+            {analysis.stamps.length >= 3 && (
+              <Field
+                label={`Tampons détectés (${analysis.stamps.length})`}
+                icon={<CircleDot size={13} />}
+                hint="Chaque tampon devient un composant indépendant, posé exactement sur l'original."
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <Toggle
+                    on={choices.convertStamps}
+                    onChange={(v) => patch({ convertStamps: v })}
+                    label="Convertir en tampons modifiables"
+                  />
+                  {choices.convertStamps && (
+                    <label className="flex cursor-pointer items-center gap-2 text-xs" style={{ color: "var(--text-dim)" }}>
+                      Couleur tampon validé
+                      <span className="relative h-7 w-7 overflow-hidden rounded-md border" style={{ background: choices.stampAccent, borderColor: "var(--border-strong)" }}>
+                        <input
+                          type="color"
+                          value={/^#[0-9a-fA-F]{6}$/.test(choices.stampAccent) ? choices.stampAccent : "#e8503d"}
+                          onChange={(e) => patch({ stampAccent: e.target.value })}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        />
+                      </span>
+                    </label>
+                  )}
+                </div>
+              </Field>
             )}
-            <button
-              onClick={createCard}
-              className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
-              style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))", boxShadow: "0 10px 24px -8px var(--accent-glow)" }}
-            >
-              <Sparkles size={16} /> Créer ma carte
-            </button>
-            <button
-              onClick={() => { setStep("preview"); }}
-              className="cursor-pointer text-xs font-medium transition-colors hover:text-[var(--accent-1)]"
-              style={{ color: "var(--text-faint)" }}
-            >
-              ← Revenir à l&rsquo;image
-            </button>
+
+            {/* QR */}
+            <Field label="QR code" icon={<QrCode size={13} />}>
+              {analysis.qr ? (
+                <div className="flex gap-2">
+                  {([
+                    ["keep", "Conserver l'original"],
+                    ["fidicard", "Remplacer par le QR FidiCard"],
+                  ] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      onClick={() => patch({ qrMode: mode })}
+                      className="flex-1 cursor-pointer rounded-lg border py-2 text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: choices.qrMode === mode ? "var(--accent-1)" : "var(--border)",
+                        background: choices.qrMode === mode ? "var(--accent-glow)" : "var(--panel-soft)",
+                        color: choices.qrMode === mode ? "var(--accent-1)" : "var(--text-dim)",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <Toggle on={choices.addFidiQr} onChange={(v) => patch({ addFidiQr: v })} label="Ajouter le QR FidiCard (discret, déplaçable)" />
+              )}
+            </Field>
+
+            <Field label="Code-barres" icon={<Barcode size={13} />}>
+              <Toggle on={choices.addBarcode} onChange={(v) => patch({ addBarcode: v })} label="Ajouter le code-barres FidiCard (offre Starter)" />
+            </Field>
+
+            <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center">
+              <button
+                onClick={createCard}
+                className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
+                style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))", boxShadow: "0 10px 24px -8px var(--accent-glow)" }}
+              >
+                <Sparkles size={16} /> Créer ma carte ({elementCount} élément{elementCount > 1 ? "s" : ""} + fond)
+              </button>
+              <button
+                onClick={importAsBackground}
+                className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-4 py-3 text-xs font-medium transition-colors hover:border-[var(--accent-1)]"
+                style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
+              >
+                <ImageIcon size={14} /> Importer comme fond simple
+              </button>
+              <button
+                onClick={() => setStep("adjust")}
+                className="cursor-pointer text-xs font-medium transition-colors hover:text-[var(--accent-1)] sm:ml-auto"
+                style={{ color: "var(--text-faint)" }}
+              >
+                ← Revenir à l&rsquo;image
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -368,51 +509,51 @@ export default function ImportCardModal() {
   );
 }
 
-function specFrom(f: ReviewFields, a: ImportAnalysis): TemplateSpec {
-  return {
-    id: "import",
-    name: f.business ? `Carte ${f.business}` : "Carte importée",
-    business: f.business || "MON COMMERCE",
-    tagline: f.tagline,
-    sector: "Autres",
-    loyalty: f.loyalty,
-    goal: f.goal,
-    filled: f.loyalty === "tampons" ? Math.min(f.goal, Math.round(f.goal / 2)) : Math.round(f.goal / 2),
-    reward: f.reward,
-    icon: f.icon,
-    bg: [f.bg, a.palette.bg2],
-    fg: a.palette.text,
-    sub: a.palette.sub,
-    accent: f.accent,
-  };
-}
+/* ------------------------------------------------------------- primitives */
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  icon,
+  hint,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
-        {label}
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+        {icon} {label}
       </p>
+      {hint && (
+        <p className="mb-2 text-[11px] leading-relaxed" style={{ color: "var(--text-faint)" }}>
+          {hint}
+        </p>
+      )}
       {children}
     </div>
   );
 }
 
-function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2">
+    <button
+      onClick={() => onChange(!on)}
+      className="flex cursor-pointer items-center gap-2 text-xs font-medium"
+      style={{ color: on ? "var(--text)" : "var(--text-dim)" }}
+    >
       <span
-        className="relative h-9 w-9 overflow-hidden rounded-lg border"
-        style={{ background: value, borderColor: "var(--border-strong)" }}
+        className="relative h-5 w-9 rounded-full transition-colors"
+        style={{ background: on ? "var(--accent-1)" : "rgba(148,148,148,0.35)" }}
       >
-        <input
-          type="color"
-          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#333333"}
-          onChange={(e) => onChange(e.target.value)}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        <span
+          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+          style={{ left: on ? "18px" : "2px" }}
         />
       </span>
-      <span className="text-xs" style={{ color: "var(--text-dim)" }}>{label}</span>
-    </label>
+      {label}
+    </button>
   );
 }

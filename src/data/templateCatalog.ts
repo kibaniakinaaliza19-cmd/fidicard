@@ -6,6 +6,7 @@ import {
   makeId,
 } from "@/lib/layerFactory";
 import { cardTemplates } from "@/data/cardTemplates";
+import { generatedSpecs } from "@/data/templateFactory";
 
 /* -------------------------------------------------------------------------- */
 /*  Declarative template catalog                                              */
@@ -18,6 +19,7 @@ import { cardTemplates } from "@/data/cardTemplates";
 
 export type LoyaltyKind = "tampons" | "points";
 export type TemplateTag = "populaire" | "nouveau";
+export type TemplateLayout = "classic" | "centered" | "split" | "banner";
 
 export interface TemplateSpec {
   id: string;
@@ -34,6 +36,7 @@ export interface TemplateSpec {
   fg: string; // title colour
   sub: string; // subtitle / reward colour
   accent: string; // stamp & progress colour
+  layout?: TemplateLayout; // composition — defaults to "classic"
   tags?: TemplateTag[];
 }
 
@@ -76,20 +79,31 @@ function background(bg: [string, string] | string): CardBackground {
 
 /* ---- stamp grid (wraps to 2 rows past 6 stamps) ---- */
 
+interface StampArea {
+  x: number;
+  w: number;
+  /** center rows horizontally inside the area (layouts ≠ classic) */
+  center?: boolean;
+  y?: number;
+}
+
 function stampGrid(
   z: () => number,
   goal: number,
   filled: number,
   iconName: string,
   accent: string,
+  area: StampArea = { x: 8, w: 84 },
 ): Layer[] {
   const layers: Layer[] = [];
+  const size = 9;
   const shown = Math.min(goal, 10);
   const perRow = shown <= 6 ? shown : Math.ceil(shown / 2);
   const rows = Math.ceil(shown / perRow);
-  const gap = 14;
-  const startX = 8;
-  const startY = rows === 1 ? 52 : 46;
+  const gap = perRow > 1 ? Math.min(14, (area.w - size) / (perRow - 1)) : 0;
+  const rowWidth = (perRow - 1) * gap + size;
+  const startX = area.center ? area.x + (area.w - rowWidth) / 2 : area.x;
+  const startY = area.y ?? (rows === 1 ? 52 : 46);
   const rowGap = 16;
 
   for (let i = 0; i < shown; i++) {
@@ -104,7 +118,7 @@ function stampGrid(
         name: `Tampon ${i + 1}`,
         x,
         y,
-        width: 9,
+        width: size,
         height: 14,
         fill: on ? accent : "rgba(255,255,255,0.12)",
       }),
@@ -124,113 +138,182 @@ function stampGrid(
   return layers;
 }
 
-/* ---- generic builder ---- */
+/* ---- generic builder (4 compositions) ---- */
+
+function hexLum(hex: string): number {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex);
+  if (!m) return 0;
+  return (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255;
+}
 
 export function buildFromSpec(spec: TemplateSpec): CardDoc {
+  const layout = spec.layout ?? "classic";
   let zc = 0;
   const z = () => ++zc;
   const layers: Layer[] = [];
 
-  // header: icon + business + tagline
-  layers.push(
-    createIconLayer(z(), spec.icon, {
-      id: makeId("brand-ic"),
-      name: "Icône",
-      x: 7,
-      y: 20,
-      width: 9,
-      height: 14,
-      color: spec.accent,
-    }),
-  );
-  layers.push(
-    createTextLayer(z(), {
-      id: makeId("business"),
-      name: "Nom du commerce",
-      content: spec.business,
-      x: 18,
-      y: 21,
-      width: 66,
-      height: 10,
-      fontSize: spec.business.length > 15 ? 15 : 18,
-      fontWeight: 800,
-      color: spec.fg,
-    }),
-  );
-  layers.push(
-    createTextLayer(z(), {
-      id: makeId("tagline"),
-      name: "Slogan",
-      content: spec.tagline,
-      x: 18,
-      y: spec.business.length > 15 ? 33 : 34,
-      width: 66,
-      height: 6,
-      fontSize: 9,
-      fontWeight: 400,
-      color: spec.sub,
-    }),
-  );
+  // geometry of the content column, per composition
+  const contentX = layout === "split" ? 31 : 8;
+  const contentW = layout === "split" ? 61 : 84;
+  const centered = layout === "centered";
 
-  // loyalty visual
-  if (spec.loyalty === "tampons") {
-    layers.push(...stampGrid(z, spec.goal, spec.filled, spec.icon, spec.accent));
-  } else {
+  /* — structural decor first (below everything else) — */
+  if (layout === "split") {
     layers.push(
       createShapeLayer(z(), "rect", {
-        id: makeId("bar-bg"),
-        name: "Jauge",
-        x: 8,
-        y: 54,
-        width: 84,
-        height: 7,
+        id: makeId("side-band"),
+        name: "Bande latérale",
+        x: 0,
+        y: 0,
+        width: 27,
+        height: 100,
         fill: spec.accent,
-        opacity: 22,
-        radius: 4,
+        opacity: 16,
+        radius: 0,
+      }),
+    );
+  }
+  if (layout === "banner") {
+    layers.push(
+      createShapeLayer(z(), "rect", {
+        id: makeId("banner"),
+        name: "Bandeau",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 26,
+        fill: spec.accent,
+        opacity: 96,
+        radius: 0,
+      }),
+    );
+  }
+
+  /* — header: icon + business + tagline — */
+  const longName = spec.business.length > 15;
+  const bannerText = hexLum(spec.accent) > 0.55 ? "#221610" : "#ffffff";
+
+  if (layout === "classic") {
+    layers.push(
+      createIconLayer(z(), spec.icon, { id: makeId("brand-ic"), name: "Icône", x: 7, y: 20, width: 9, height: 14, color: spec.accent }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("business"), name: "Nom du commerce", content: spec.business,
+        x: 18, y: 21, width: 66, height: 10,
+        fontSize: longName ? 15 : 18, fontWeight: 800, color: spec.fg,
+      }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("tagline"), name: "Slogan", content: spec.tagline,
+        x: 18, y: longName ? 33 : 34, width: 66, height: 6,
+        fontSize: 9, fontWeight: 400, color: spec.sub,
+      }),
+    );
+  } else if (layout === "centered") {
+    layers.push(
+      createIconLayer(z(), spec.icon, { id: makeId("brand-ic"), name: "Icône", x: 45.5, y: 6, width: 9, height: 14, color: spec.accent }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("business"), name: "Nom du commerce", content: spec.business,
+        x: 10, y: 23, width: 80, height: 10,
+        fontSize: longName ? 15 : 18, fontWeight: 800, color: spec.fg, align: "center",
+      }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("tagline"), name: "Slogan", content: spec.tagline,
+        x: 10, y: longName ? 35 : 36, width: 80, height: 6,
+        fontSize: 9, fontWeight: 400, color: spec.sub, align: "center",
+      }),
+    );
+  } else if (layout === "split") {
+    layers.push(
+      createIconLayer(z(), spec.icon, { id: makeId("brand-ic"), name: "Icône", x: 9, y: 36, width: 9, height: 14, color: spec.accent }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("business"), name: "Nom du commerce", content: spec.business,
+        x: 31, y: 20, width: 60, height: 10,
+        fontSize: longName ? 14 : 17, fontWeight: 800, color: spec.fg,
+      }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("tagline"), name: "Slogan", content: spec.tagline,
+        x: 31, y: longName ? 32 : 33, width: 60, height: 6,
+        fontSize: 9, fontWeight: 400, color: spec.sub,
+      }),
+    );
+  } else {
+    // banner
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("business"), name: "Nom du commerce", content: spec.business,
+        x: 8, y: 6, width: 76, height: 10,
+        fontSize: longName ? 14 : 17, fontWeight: 800, color: bannerText,
+      }),
+    );
+    layers.push(
+      createIconLayer(z(), spec.icon, { id: makeId("brand-ic"), name: "Icône", x: 86, y: 5, width: 8, height: 13, color: bannerText }),
+    );
+    layers.push(
+      createTextLayer(z(), {
+        id: makeId("tagline"), name: "Slogan", content: spec.tagline,
+        x: 8, y: 30, width: 76, height: 6,
+        fontSize: 9, fontWeight: 400, color: spec.sub,
+      }),
+    );
+  }
+
+  /* — loyalty visual — */
+  if (spec.loyalty === "tampons") {
+    layers.push(
+      ...stampGrid(z, spec.goal, spec.filled, spec.icon, spec.accent, {
+        x: contentX,
+        w: contentW,
+        center: centered || layout === "split" || layout === "banner",
+        y: layout === "banner" ? (Math.min(spec.goal, 10) <= 6 ? 56 : 48) : undefined,
+      }),
+    );
+  } else {
+    const barY = layout === "banner" ? 56 : 54;
+    layers.push(
+      createShapeLayer(z(), "rect", {
+        id: makeId("bar-bg"), name: "Jauge",
+        x: contentX, y: barY, width: contentW, height: 7,
+        fill: spec.accent, opacity: 22, radius: 4,
       }),
     );
     const ratio = Math.max(0.08, Math.min(1, spec.filled / spec.goal));
     layers.push(
       createShapeLayer(z(), "rect", {
-        id: makeId("bar-fill"),
-        name: "Progression",
-        x: 8,
-        y: 54,
-        width: Math.round(84 * ratio),
-        height: 7,
-        fill: spec.accent,
-        radius: 4,
+        id: makeId("bar-fill"), name: "Progression",
+        x: contentX, y: barY, width: Math.round(contentW * ratio), height: 7,
+        fill: spec.accent, radius: 4,
       }),
     );
     layers.push(
       createTextLayer(z(), {
-        id: makeId("points"),
-        name: "Points",
+        id: makeId("points"), name: "Points",
         content: `${spec.filled} / ${spec.goal} points`,
-        x: 8,
-        y: 64,
-        width: 50,
-        height: 6,
-        fontSize: 9,
-        fontWeight: 600,
-        color: spec.sub,
+        x: centered ? 25 : contentX, y: barY + 10, width: 50, height: 6,
+        fontSize: 9, fontWeight: 600, color: spec.sub,
+        align: centered ? "center" : "left",
       }),
     );
   }
 
-  // reward
+  /* — reward — */
   layers.push(
     createTextLayer(z(), {
-      id: makeId("reward"),
-      name: "Récompense",
-      content: spec.reward,
-      x: 8,
-      y: 79,
-      width: 82,
-      height: 7,
-      fontSize: 9,
-      fontWeight: 600,
-      color: spec.sub,
+      id: makeId("reward"), name: "Récompense", content: spec.reward,
+      x: centered ? 9 : contentX, y: layout === "banner" ? 80 : 79,
+      width: centered ? 82 : Math.min(82, contentW + 21), height: 7,
+      fontSize: 9, fontWeight: 600, color: spec.sub,
+      align: centered ? "center" : "left",
     }),
   );
 
@@ -343,7 +426,7 @@ const specs: TemplateSpec[] = [
 const SECTOR_ORDER = [
   "Café", "Restaurant", "Fast-food", "Pizzeria", "Boulangerie", "Pâtisserie", "Bar",
   "Salon de coiffure", "Barbier", "Institut de beauté", "Onglerie", "Spa",
-  "Sport & Fitness", "Hôtel", "Garage", "Fleuriste", "Pharmacie", "Opticien",
+  "Sport & Fitness", "Hôtel", "Garage", "Fleuriste", "Formations", "Pharmacie", "Opticien",
   "Boutique", "Animalerie", "Librairie", "Tattoo", "Autres",
 ];
 
@@ -352,9 +435,9 @@ function sectorRank(sector: string) {
   return i === -1 ? SECTOR_ORDER.length : i;
 }
 
-/* ---- unified catalog (declarative specs + hand-crafted legacy templates) ---- */
+/* ---- unified catalog (curated specs + generated matrix + legacy) ---- */
 
-const specEntries: TemplateEntry[] = specs.map((s) => ({
+const specEntries: TemplateEntry[] = [...specs, ...generatedSpecs].map((s) => ({
   id: s.id,
   name: s.name,
   sector: s.sector,

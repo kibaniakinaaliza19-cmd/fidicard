@@ -38,6 +38,7 @@ export default function TemplatesDrawer() {
   const setImportCardOpen = useUIStore((s) => s.setImportCardOpen);
   const [sector, setSector] = useState("Tous");
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const q = query.trim().toLowerCase();
 
@@ -120,38 +121,57 @@ export default function TemplatesDrawer() {
         </p>
       ) : (
         <div className="space-y-5">
-          {groups.map(([sectorName, items]) => (
-            <div key={sectorName}>
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>{sectorName}</p>
-                <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>{items.length}</span>
+          {groups.map(([sectorName, items]) => {
+            // en vue « Tous » sans recherche : 4 modèles par secteur, le reste à la demande
+            const collapsed = sector === "Tous" && !q && !expanded.has(sectorName) && items.length > 4;
+            const visible = collapsed ? items.slice(0, 4) : items;
+            return (
+              <div key={sectorName}>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>{sectorName}</p>
+                  <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>{items.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {visible.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => apply(t)}
+                      className="relative block w-full cursor-pointer overflow-hidden rounded-xl border transition-transform hover:-translate-y-0.5 hover:border-[var(--accent-1)]"
+                      style={{
+                        borderColor: "var(--border)",
+                        // ne rendre le contenu que lorsqu'il approche du viewport
+                        contentVisibility: "auto",
+                        containIntrinsicSize: "auto 196px",
+                      }}
+                    >
+                      {t.tags?.[0] && (
+                        <span
+                          className="absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+                          style={{ background: TAG_STYLE[t.tags[0]].bg, color: TAG_STYLE[t.tags[0]].color }}
+                        >
+                          {TAG_STYLE[t.tags[0]].label}
+                        </span>
+                      )}
+                      <MiniCard doc={docFor(t)} width={248} />
+                      <div className="px-2.5 py-1.5 text-left" style={{ background: "var(--panel-soft)" }}>
+                        <p className="text-xs font-medium" style={{ color: "var(--text)" }}>{t.name}</p>
+                        <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>{t.sector}</p>
+                      </div>
+                    </button>
+                  ))}
+                  {collapsed && (
+                    <button
+                      onClick={() => setExpanded((s) => new Set(s).add(sectorName))}
+                      className="w-full cursor-pointer rounded-xl border border-dashed py-2 text-[11px] font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+                      style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
+                    >
+                      Voir les {items.length - 4} autres modèles {sectorName}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="space-y-3">
-                {items.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => apply(t)}
-                    className="relative block w-full cursor-pointer overflow-hidden rounded-xl border transition-transform hover:-translate-y-0.5 hover:border-[var(--accent-1)]"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    {t.tags?.[0] && (
-                      <span
-                        className="absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
-                        style={{ background: TAG_STYLE[t.tags[0]].bg, color: TAG_STYLE[t.tags[0]].color }}
-                      >
-                        {TAG_STYLE[t.tags[0]].label}
-                      </span>
-                    )}
-                    <MiniCard doc={docFor(t)} width={248} />
-                    <div className="px-2.5 py-1.5 text-left" style={{ background: "var(--panel-soft)" }}>
-                      <p className="text-xs font-medium" style={{ color: "var(--text)" }}>{t.name}</p>
-                      <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>{t.sector}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </DrawerShell>

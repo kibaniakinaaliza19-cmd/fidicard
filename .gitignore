@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# ressources OCR copiées depuis node_modules par scripts/setup-ocr.mjs
+/public/ocr/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
