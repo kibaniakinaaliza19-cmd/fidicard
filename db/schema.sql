@@ -18,6 +18,15 @@ create table if not exists commerces (
   owner_id uuid not null references users (id) on delete cascade,
   nom text not null,
   plan text not null default 'starter' check (plan in ('starter', 'pro', 'business')),
+  -- Programme de fidélité (alimenté par l'import de carte — Phase 4)
+  mode_fidelite text not null default 'tampons' check (mode_fidelite in ('tampons', 'points')),
+  objectif_tampons integer not null default 10,
+  -- ex: [{"position": 3, "reward": "-5€"}, {"position": 6, "reward": "-15%"},
+  --      {"position": 10, "reward": "-50%"}]
+  paliers jsonb not null default '[]'::jsonb,
+  consigne text,
+  reseau_social text,
+  site_web text,
   created_at timestamptz not null default now()
 );
 

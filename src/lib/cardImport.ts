@@ -1,29 +1,41 @@
-// Moteur d'import de carte — analyse réelle, 100 % côté navigateur.
+// Moteur d'import de carte — pipeline en 4 phases.
 //
-// Réel dès aujourd'hui :
-//   • palette extraite des pixels (quantification + histogramme) ;
-//   • OCR des textes avec positions exactes (tesseract.js, fra+eng) ;
-//   • détection des tampons ronds (composantes connexes) ;
-//   • détection du QR code (jsQR) ;
-//   • effacement des textes du fond quand la zone est unie (masquage sûr).
+//   Phase 1  Détection & redressement de la carte (cardDetect.ts) : la photo
+//            est détourée de son environnement (table, doigts, mur) puis
+//            redressée par homographie. Coins ajustables à la main dans l'UI.
+//   Phase 2  Compréhension : soit le modèle de vision via /api/analyze-card
+//            (textes, logos, ET logique du programme : paliers -5€/-15%/-50%),
+//            soit le moteur local (OCR tesseract + détection de formes) quand
+//            aucune clé API n'est configurée. Les deux produisent la même
+//            structure — l'UI ne change pas.
+//   Phase 3  Reconstruction : chaque élément devient un calque indépendant
+//            (importToCard.ts) posé pile sur l'original. Les logos sont
+//            découpés de l'image (crop) pour devenir déplaçables.
+//   Phase 4  Logique métier : le programme détecté (type, objectif, paliers,
+//            consigne, réseau social) alimente les données FidiCard.
 //
-// Règle d'or : ne jamais dégrader le rendu. Chaque étape est isolée dans un
-// try/catch — si une détection échoue, on continue sans elle et on l'explique
-// dans `warnings`. Le pire résultat possible reste « l'image en fond, rien
-// détecté », jamais un visuel abîmé.
+// Règle d'or : ne jamais dégrader le rendu. Chaque étape est isolée — si une
+// détection échoue on continue sans elle et on l'explique dans `warnings`.
 //
-// Alternatives serveur si un jour la qualité client ne suffit plus (clé API +
-// coût par appel) : Google Cloud Vision (OCR + logos), AWS Textract, remove.bg.
-// Ce fichier est le seul point d'entrée à remplacer — l'UI ne change pas.
+// Alternatives non implémentées (documentées à dessein) :
+//   • Google Cloud Vision — OCR + logos plus précis sur texte pur, mais ne
+//     comprend pas la logique métier d'une carte ; facturé à l'image.
+//   • OpenCV.js — détection de contours plus robuste que notre canvas maison,
+//     au prix d'un WASM de ~8 Mo.
+//   • remove.bg — isolation de sujet, API payante.
+// Le modèle de vision reste supérieur ici : il est le seul à comprendre le
+// SENS de la carte (paliers, récompenses, consignes), pas juste ses pixels.
 
 import { CARD_RATIO } from "@/types/layer";
+import { rectifyCard, type CardCorners } from "@/lib/cardDetect";
+import type { VisionAnalysis } from "@/lib/visionSchema";
 
 /* ------------------------------------------------------------------ types */
 
 export interface DetectedText {
   id: string;
   content: string;
-  /** position en % du cadre carte (déjà paddé au ratio 85,6 × 53,98) */
+  /** position en % du cadre carte */
   x: number;
   y: number;
   w: number;
@@ -43,6 +55,18 @@ export interface DetectedStamp {
   h: number;
 }
 
+export interface DetectedLogo {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** découpe de l'image d'origine — devient un calque image déplaçable */
+  dataUrl: string;
+  description: string;
+  masked: boolean;
+}
+
 export interface DetectedQr {
   x: number;
   y: number;
@@ -51,32 +75,48 @@ export interface DetectedQr {
   value: string;
 }
 
+export interface ImportTier {
+  position: number;
+  reward: string;
+}
+
+/** La logique métier comprise depuis la carte (Phase 4). */
+export interface ImportProgram {
+  type: "tampons" | "points";
+  totalStamps: number;
+  tiers: ImportTier[];
+  instructions?: string;
+  social?: string;
+  website?: string;
+}
+
 export interface ImportAnalysis {
-  /** image paddée au ratio carte, textes effacés quand c'était sûr */
+  /** image de la carte (redressée), textes effacés quand c'était sûr */
   backgroundDataUrl: string;
-  /** image paddée, non nettoyée (pour l'écran de révision) */
+  /** image de la carte (redressée), non nettoyée — pour l'écran de révision */
   originalDataUrl: string;
   frameWidth: number;
   frameHeight: number;
-  /** 6 couleurs dominantes, de la plus présente à la moins présente */
   palette: string[];
   theme: { bg: string; accent: string; text: string; sub: string };
   texts: DetectedText[];
   stamps: DetectedStamp[];
-  /** couleur intérieure des tampons détectés */
   stampFill: string;
+  logos: DetectedLogo[];
   qr: DetectedQr | null;
+  program: ImportProgram | null;
+  engine: "vision" | "local";
   lowQuality: boolean;
   warnings: string[];
 }
 
 export const ANALYSIS_STEPS = [
   "Téléversement de l'image…",
-  "Cadrage & préparation…",
+  "Détection & redressement de la carte…",
   "Analyse des couleurs…",
-  "Lecture des textes (OCR)…",
-  "Détection des tampons…",
-  "Détection du QR code…",
+  "Lecture des textes…",
+  "Tampons & paliers de récompense…",
+  "Logos & QR code…",
   "Nettoyage du fond…",
   "Reconstruction des calques…",
 ] as const;
@@ -124,9 +164,23 @@ function colorDist(r1: number, g1: number, b1: number, r2: number, g2: number, b
 let idc = 0;
 const nextId = (p: string) => `${p}-${Date.now().toString(36)}-${++idc}`;
 
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function overlap(a: Box, b: Box) {
+  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const inter = ix * iy;
+  const min = Math.min(a.w * a.h, b.w * b.h);
+  return min > 0 ? inter / min : 0;
+}
+
 /* ------------------------------------------------- normalisation & cadrage */
 
-/** couleur moyenne du bord de l'image (pour remplir padding et rotation) */
 function edgeColor(ctx: CanvasRenderingContext2D, w: number, h: number): [number, number, number] {
   const { data } = ctx.getImageData(0, 0, w, h);
   let r = 0, g = 0, b = 0, n = 0;
@@ -143,7 +197,6 @@ interface Frame {
   ctx: CanvasRenderingContext2D;
   W: number;
   H: number;
-  /** zone réellement occupée par la photo dans le cadre paddé */
   imgX: number;
   imgY: number;
   imgW: number;
@@ -152,7 +205,6 @@ interface Frame {
 
 /** pivote finement puis padde l'image au ratio exact de la carte */
 function normalize(img: HTMLImageElement, fineDeg: number): Frame {
-  // 1. redimensionner (l'OCR n'a pas besoin de plus de 1400 px)
   const scale = Math.min(1, 1400 / img.width);
   let w = Math.round(img.width * scale);
   let h = Math.round(img.height * scale);
@@ -164,7 +216,6 @@ function normalize(img: HTMLImageElement, fineDeg: number): Frame {
     src = canvas;
   }
 
-  // 2. rotation fine éventuelle (photo de travers)
   if (fineDeg !== 0) {
     const rad = (fineDeg * Math.PI) / 180;
     const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
@@ -182,9 +233,8 @@ function normalize(img: HTMLImageElement, fineDeg: number): Frame {
     h = rh;
   }
 
-  // 3. padding au ratio carte — indispensable : le fond est rendu en `cover`,
-  //    donc seule une image déjà au bon ratio garantit l'alignement exact des
-  //    calques posés par-dessus.
+  // padding au ratio carte — le fond est rendu en `cover`, donc seule une
+  // image déjà au bon ratio garantit l'alignement exact des calques.
   const ratio = w / h;
   let W = w, H = h, imgX = 0, imgY = 0;
   if (ratio > CARD_RATIO) {
@@ -224,7 +274,6 @@ function extractPalette(frame: Frame): string[] {
     .map((e) => ({ n: e.n, r: e.r / e.n, g: e.g / e.n, b: e.b / e.n }))
     .sort((a, b) => b.n - a.n);
 
-  // garder jusqu'à 6 couleurs mutuellement distinctes
   const out: { r: number; g: number; b: number }[] = [];
   for (const c of ranked) {
     if (out.length >= 6) break;
@@ -242,7 +291,6 @@ function hexToRgb(hex: string): [number, number, number] {
 function themeFromPalette(palette: string[]) {
   const [br, bg_, bb] = hexToRgb(palette[0]);
   const bgLum = luminance(br, bg_, bb);
-  // accent = couleur la plus saturée nettement différente du fond
   let accent = palette[1] ?? "#f0653e";
   let best = -1;
   for (const hex of palette.slice(1)) {
@@ -259,7 +307,7 @@ function themeFromPalette(palette: string[]) {
   };
 }
 
-/* --------------------------------------------------------------- OCR réel */
+/* --------------------------------------------------------------- OCR local */
 
 interface OcrLine {
   text: string;
@@ -269,8 +317,7 @@ interface OcrLine {
 
 async function runOcr(frame: Frame): Promise<OcrLine[]> {
   const { createWorker } = await import("tesseract.js");
-  // ressources auto-hébergées (copiées par scripts/setup-ocr.mjs) : pas de
-  // dépendance CDN. Si elles manquent, second essai avec les CDN par défaut.
+  // ressources auto-hébergées (scripts/setup-ocr.mjs) ; repli CDN sinon
   let worker;
   try {
     worker = await createWorker(["fra", "eng"], undefined, {
@@ -309,7 +356,6 @@ function sampleTextColor(frame: Frame, b: { x0: number; y0: number; x1: number; 
     px.push({ l: luminance(data[i], data[i + 1], data[i + 2]), r: data[i], g: data[i + 1], b: data[i + 2] });
   }
   px.sort((a, c) => a.l - c.l);
-  // fond clair → texte = décile le plus sombre ; fond sombre → le plus clair
   const slice = ring.lum > 0.5 ? px.slice(0, Math.max(1, Math.floor(px.length * 0.1)))
                                : px.slice(-Math.max(1, Math.floor(px.length * 0.1)));
   let r = 0, g = 0, bl = 0;
@@ -317,7 +363,7 @@ function sampleTextColor(frame: Frame, b: { x0: number; y0: number; x1: number; 
   return rgbToHex(r / slice.length, g / slice.length, bl / slice.length);
 }
 
-/** stats de l'anneau de pixels autour d'une bbox (pour couleur + uniformité) */
+/** stats de l'anneau de pixels autour d'une bbox (couleur + uniformité) */
 function ringStats(frame: Frame, b: { x0: number; y0: number; x1: number; y1: number }) {
   const pad = 5;
   const x0 = Math.max(0, b.x0 - pad), y0 = Math.max(0, b.y0 - pad);
@@ -329,7 +375,7 @@ function ringStats(frame: Frame, b: { x0: number; y0: number; x1: number; y1: nu
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const inside = x >= b.x0 - x0 && x < b.x1 - x0 && y >= b.y0 - y0 && y < b.y1 - y0;
-      if (inside) continue; // seulement l'anneau
+      if (inside) continue;
       const i = (y * w + x) * 4;
       rs.push(data[i]); gs.push(data[i + 1]); bs.push(data[i + 2]);
     }
@@ -342,9 +388,16 @@ function ringStats(frame: Frame, b: { x0: number; y0: number; x1: number; y1: nu
   return { r, g, b: bl, std, lum: luminance(r, g, bl) };
 }
 
-/* ------------------------------------------------ tampons (blobs ronds) */
+/* ------------------------------------- formes locales : tampons + logos */
 
-function detectStamps(frame: Frame, bgHex: string): { stamps: DetectedStamp[]; fill: string } {
+interface BlobResult {
+  stamps: DetectedStamp[];
+  fill: string;
+  /** grandes zones graphiques non-tampon : candidates logo (bboxes en %) */
+  logoBoxes: Box[];
+}
+
+function detectBlobs(frame: Frame, bgHex: string): BlobResult {
   const down = 300;
   const dh = Math.round((down * frame.H) / frame.W);
   const { ctx } = makeCanvas(down, dh);
@@ -352,14 +405,12 @@ function detectStamps(frame: Frame, bgHex: string): { stamps: DetectedStamp[]; f
   const { data } = ctx.getImageData(0, 0, down, dh);
   const [br, bg_, bb] = hexToRgb(bgHex);
 
-  // 1 = pixel qui tranche avec le fond dominant
   const fg = new Uint8Array(down * dh);
   for (let i = 0; i < down * dh; i++) {
     const o = i * 4;
     if (colorDist(data[o], data[o + 1], data[o + 2], br, bg_, bb) > 65) fg[i] = 1;
   }
 
-  // composantes connexes (flood fill itératif)
   const label = new Int32Array(down * dh).fill(-1);
   interface Comp { minX: number; maxX: number; minY: number; maxY: number; n: number; r: number; g: number; b: number }
   const comps: Comp[] = [];
@@ -378,7 +429,6 @@ function detectStamps(frame: Frame, bgHex: string): { stamps: DetectedStamp[]; f
       c.minY = Math.min(c.minY, y); c.maxY = Math.max(c.maxY, y);
       const o = p * 4;
       c.r += data[o]; c.g += data[o + 1]; c.b += data[o + 2];
-      // voisins 4-connexes sans wrap horizontal
       if (x > 0 && fg[p - 1] && label[p - 1] === -1) { label[p - 1] = id; stack.push(p - 1); }
       if (x < down - 1 && fg[p + 1] && label[p + 1] === -1) { label[p + 1] = id; stack.push(p + 1); }
       if (p - down >= 0 && fg[p - down] && label[p - down] === -1) { label[p - down] = id; stack.push(p - down); }
@@ -387,45 +437,166 @@ function detectStamps(frame: Frame, bgHex: string): { stamps: DetectedStamp[]; f
     comps.push(c);
   }
 
-  // filtres « ça ressemble à un tampon » : quasi carré, bien rempli, taille plausible
+  const boxPct = (c: Comp): Box => ({
+    x: (c.minX / down) * 100,
+    y: (c.minY / dh) * 100,
+    w: ((c.maxX - c.minX + 1) / down) * 100,
+    h: ((c.maxY - c.minY + 1) / dh) * 100,
+  });
+
+  // tampons : quasi carrés, bien remplis, taille plausible et homogène
   const cands = comps.filter((c) => {
     const w = c.maxX - c.minX + 1, h = c.maxY - c.minY + 1;
     if (w < down * 0.04 || w > down * 0.17) return false;
     const ar = w / h;
     if (ar < 0.65 || ar > 1.5) return false;
-    const fillRatio = c.n / (w * h);
-    return fillRatio > 0.55;
-  });
-  if (cands.length < 3) return { stamps: [], fill: "#ffffff" };
-
-  // ne garder que les blobs de taille homogène autour de la médiane
-  const areas = cands.map((c) => (c.maxX - c.minX + 1) * (c.maxY - c.minY + 1)).sort((a, b) => a - b);
-  const median = areas[Math.floor(areas.length / 2)];
-  const kept = cands.filter((c) => {
-    const a = (c.maxX - c.minX + 1) * (c.maxY - c.minY + 1);
-    return a > median * 0.55 && a < median * 1.8;
-  });
-  if (kept.length < 3 || kept.length > 24) return { stamps: [], fill: "#ffffff" };
-
-  // ordre de lecture (lignes puis colonnes)
-  kept.sort((a, b) => {
-    const ay = (a.minY + a.maxY) / 2, by = (b.minY + b.maxY) / 2;
-    if (Math.abs(ay - by) > a.maxY - a.minY) return ay - by;
-    return (a.minX + a.maxX) / 2 - (b.minX + b.maxX) / 2;
+    return c.n / (w * h) > 0.55;
   });
 
-  let fr = 0, fgc = 0, fb = 0;
-  for (const c of kept) { fr += c.r / c.n; fgc += c.g / c.n; fb += c.b / c.n; }
-  const sx = frame.W / down, sy = frame.H / dh;
-  return {
-    stamps: kept.map((c) => ({
-      x: ((c.minX * sx) / frame.W) * 100,
-      y: ((c.minY * sy) / frame.H) * 100,
-      w: (((c.maxX - c.minX + 1) * sx) / frame.W) * 100,
-      h: (((c.maxY - c.minY + 1) * sy) / frame.H) * 100,
-    })),
-    fill: rgbToHex(fr / kept.length, fgc / kept.length, fb / kept.length),
-  };
+  let stamps: DetectedStamp[] = [];
+  let fill = "#ffffff";
+  let kept: Comp[] = [];
+  if (cands.length >= 3) {
+    const areas = cands.map((c) => (c.maxX - c.minX + 1) * (c.maxY - c.minY + 1)).sort((a, b) => a - b);
+    const median = areas[Math.floor(areas.length / 2)];
+    kept = cands.filter((c) => {
+      const a = (c.maxX - c.minX + 1) * (c.maxY - c.minY + 1);
+      return a > median * 0.55 && a < median * 1.8;
+    });
+    // cohérence de grille : les tampons vont toujours par rangées — un
+    // candidat sans aucun voisin aligné horizontalement est un logo ou une
+    // décoration, pas un tampon
+    if (kept.length >= 3) {
+      const rowMates = (c: Comp) =>
+        kept.filter(
+          (o) =>
+            o !== c &&
+            Math.abs((o.minY + o.maxY) / 2 - (c.minY + c.maxY) / 2) < (c.maxY - c.minY) * 0.7,
+        ).length;
+      const grid = kept.filter((c) => rowMates(c) >= 1);
+      if (grid.length >= 3) kept = grid;
+    }
+    if (kept.length >= 3 && kept.length <= 24) {
+      kept.sort((a, b) => {
+        const ay = (a.minY + a.maxY) / 2, by = (b.minY + b.maxY) / 2;
+        if (Math.abs(ay - by) > a.maxY - a.minY) return ay - by;
+        return (a.minX + a.maxX) / 2 - (b.minX + b.maxX) / 2;
+      });
+      stamps = kept.map(boxPct);
+      let fr = 0, fgc = 0, fb = 0;
+      for (const c of kept) { fr += c.r / c.n; fgc += c.g / c.n; fb += c.b / c.n; }
+      fill = rgbToHex(fr / kept.length, fgc / kept.length, fb / kept.length);
+    } else {
+      kept = [];
+    }
+  }
+
+  // candidats logo : grandes zones graphiques qui ne sont pas des tampons
+  const keptSet = new Set(kept);
+  const logoBoxes = comps
+    .filter((c) => !keptSet.has(c))
+    .filter((c) => {
+      const w = c.maxX - c.minX + 1, h = c.maxY - c.minY + 1;
+      if (w < down * 0.06 || w > down * 0.5) return false;
+      if (h < dh * 0.06 || h > dh * 0.7) return false;
+      return c.n > w * h * 0.18; // assez dense pour être un vrai graphique
+    })
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 4)
+    .map(boxPct);
+
+  return { stamps, fill, logoBoxes };
+}
+
+/**
+ * Paliers écrits dans les tampons (« -5€ », « -15% », « offert »…) : le
+ * passage OCR global rate ces petits textes. On découpe donc l'intérieur de
+ * chaque tampon, agrandi ×3, et on le lit en mode ligne unique — bien plus
+ * fiable pour comprendre le programme de la carte.
+ */
+async function ocrStampTiers(frame: Frame, stamps: DetectedStamp[]): Promise<ImportTier[]> {
+  if (stamps.length === 0 || stamps.length > 24) return [];
+  const { createWorker, PSM } = await import("tesseract.js");
+  let worker;
+  try {
+    worker = await createWorker(["fra", "eng"], undefined, {
+      workerPath: "/ocr/worker.min.js",
+      corePath: "/ocr/core",
+      langPath: "/ocr/lang",
+    });
+  } catch {
+    worker = await createWorker(["fra", "eng"]);
+  }
+  const tiers: ImportTier[] = [];
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE });
+    for (let i = 0; i < stamps.length; i++) {
+      const s = stamps[i];
+      const x = (s.x / 100) * frame.W;
+      const y = (s.y / 100) * frame.H;
+      const w = (s.w / 100) * frame.W;
+      const h = (s.h / 100) * frame.H;
+      const ix = x + w * 0.1, iy = y + h * 0.1, iw = w * 0.8, ih = h * 0.8;
+      if (iw < 8 || ih < 8) continue;
+      const { canvas, ctx } = makeCanvas(iw * 3, ih * 3);
+      ctx.imageSmoothingEnabled = true;
+      // aplatir le pourtour : les coins du crop dépassent du cercle (fond de
+      // carte sombre) et font lire « © » ou des barres à l'OCR. On remplit
+      // tout à la couleur intérieure puis on ne dessine QUE l'ellipse inscrite.
+      const cpx = frame.ctx.getImageData(
+        Math.max(0, Math.round(x + w / 2)),
+        Math.max(0, Math.round(y + h / 2)),
+        1,
+        1,
+      ).data;
+      ctx.fillStyle = rgbToHex(cpx[0], cpx[1], cpx[2]);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(
+        canvas.width / 2,
+        canvas.height / 2,
+        ((w * 3) / 2) * 0.9,
+        ((h * 3) / 2) * 0.9,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.clip();
+      ctx.drawImage(frame.canvas, ix, iy, iw, ih, 0, 0, iw * 3, ih * 3);
+      ctx.restore();
+
+      const looksLikeReward = (t: string) => /[-−+]?\s*\d{1,3}\s*[€%$]|offert|gratuit|free/i.test(t);
+      let { data } = await worker.recognize(canvas);
+      let text = (data.text ?? "").replace(/\s+/g, " ").trim();
+      if (!looksLikeReward(text)) {
+        // second essai en mode « mot unique » — meilleur sur les très courts
+        // libellés comme « -5€ »
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_WORD });
+        ({ data } = await worker.recognize(canvas));
+        const retry = (data.text ?? "").replace(/\s+/g, " ").trim();
+        if (looksLikeReward(retry)) text = retry;
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE });
+      }
+      if (text && looksLikeReward(text)) {
+        tiers.push({ position: i + 1, reward: text.replace(/[|_]/g, "").trim().slice(0, 20) });
+      }
+    }
+  } finally {
+    await worker.terminate();
+  }
+  return tiers;
+}
+
+/** découpe une zone de la carte en dataURL (calque image déplaçable) */
+function cropBox(frame: Frame, b: Box): string {
+  const x = Math.max(0, Math.round((b.x / 100) * frame.W));
+  const y = Math.max(0, Math.round((b.y / 100) * frame.H));
+  const w = Math.min(frame.W - x, Math.round((b.w / 100) * frame.W));
+  const h = Math.min(frame.H - y, Math.round((b.h / 100) * frame.H));
+  const { canvas, ctx } = makeCanvas(Math.max(2, w), Math.max(2, h));
+  ctx.drawImage(frame.canvas, x, y, w, h, 0, 0, w, h);
+  return canvas.toDataURL("image/png");
 }
 
 /* ----------------------------------------------------------------- QR code */
@@ -442,14 +613,13 @@ async function detectQr(frame: Frame): Promise<DetectedQr | null> {
   const { topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner } = code.location;
   const xs = [topLeftCorner.x, topRightCorner.x, bottomLeftCorner.x, bottomRightCorner.x];
   const ys = [topLeftCorner.y, topRightCorner.y, bottomLeftCorner.y, bottomRightCorner.y];
-  const sx = frame.W / down, sy = frame.H / dh;
-  const x0 = Math.min(...xs) * sx, x1 = Math.max(...xs) * sx;
-  const y0 = Math.min(...ys) * sy, y1 = Math.max(...ys) * sy;
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = Math.min(...ys), y1 = Math.max(...ys);
   return {
-    x: (x0 / frame.W) * 100,
-    y: (y0 / frame.H) * 100,
-    w: ((x1 - x0) / frame.W) * 100,
-    h: ((y1 - y0) / frame.H) * 100,
+    x: (x0 / down) * 100,
+    y: (y0 / dh) * 100,
+    w: ((x1 - x0) / down) * 100,
+    h: ((y1 - y0) / dh) * 100,
     value: code.data || "https://fidicard.app",
   };
 }
@@ -457,8 +627,12 @@ async function detectQr(frame: Frame): Promise<DetectedQr | null> {
 /* --------------------------------------------------------------- analyse */
 
 export interface AnalyzeOptions {
-  /** rotation fine en degrés (-15 … 15) choisie à l'écran de cadrage */
+  /** rotation fine en degrés (-15 … 15) */
   fineRotation?: number;
+  /** coins de la carte dans la photo (Phase 1) — déclenche le redressement */
+  corners?: CardCorners | null;
+  /** résultat du modèle de vision (Phase 2 « IA ») — sinon moteur local */
+  visionData?: VisionAnalysis | null;
 }
 
 export async function analyzeCardImage(
@@ -467,27 +641,35 @@ export async function analyzeCardImage(
   options: AnalyzeOptions = {},
 ): Promise<ImportAnalysis> {
   const warnings: string[] = [];
+  const vision = options.visionData ?? null;
   const tick = async (i: number) => {
     onStep(i);
-    // laisser l'UI respirer entre deux étapes lourdes
     await new Promise((r) => setTimeout(r, 60));
   };
 
   await tick(0);
-  const img = await loadImage(dataUrl);
 
+  /* — Phase 1 : redressement — */
   await tick(1);
+  let workUrl = dataUrl;
+  if (options.corners) {
+    const rectified = await rectifyCard(dataUrl, options.corners);
+    if (rectified) workUrl = rectified;
+    else warnings.push("Redressement impossible — la photo entière a été conservée.");
+  }
+  const img = await loadImage(workUrl);
   const frame = normalize(img, options.fineRotation ?? 0);
   const lowQuality = frame.imgW < 450;
   if (lowQuality) warnings.push("Image de faible résolution — les détections peuvent être approximatives.");
-  const imgRatio = frame.imgW / frame.imgH;
-  if (imgRatio < CARD_RATIO * 0.72 || imgRatio > CARD_RATIO * 1.38) {
-    warnings.push(
-      "Le cadrage est éloigné du format carte — des bandes ont été ajoutées autour. Recadrez la photo au plus près de la carte pour un meilleur résultat.",
-    );
+  if (!options.corners) {
+    const imgRatio = frame.imgW / frame.imgH;
+    if (imgRatio < CARD_RATIO * 0.72 || imgRatio > CARD_RATIO * 1.38) {
+      warnings.push("Le cadrage est éloigné du format carte — ajustez les coins pour détourer la carte.");
+    }
   }
   const originalDataUrl = frame.canvas.toDataURL("image/jpeg", 0.92);
 
+  /* — couleurs (toujours locales : extraction pixel exacte) — */
   await tick(2);
   let palette: string[] = ["#241812", "#f0653e"];
   try {
@@ -496,94 +678,229 @@ export async function analyzeCardImage(
     warnings.push("Analyse des couleurs impossible sur cette image.");
   }
   const theme = themeFromPalette(palette);
-
-  await tick(3);
-  let ocrLines: OcrLine[] = [];
-  try {
-    ocrLines = await runOcr(frame);
-  } catch {
-    warnings.push(
-      "Lecture des textes indisponible (le module OCR n'a pas pu se charger — vérifiez la connexion). Les textes restent dans l'image de fond.",
-    );
+  if (vision?.design?.accentColor && /^#[0-9a-f]{6}$/i.test(vision.design.accentColor)) {
+    theme.accent = vision.design.accentColor;
   }
 
-  await tick(4);
-  // tampons d'abord : ils priment sur l'OCR, car une rangée de cercles vides
-  // est très souvent « lue » comme du texte (OOOOO) par tesseract.
-  let stampResult: { stamps: DetectedStamp[]; fill: string } = { stamps: [], fill: "#ffffff" };
-  try {
-    stampResult = detectStamps(frame, palette[0]);
-  } catch {
-    warnings.push("Détection des tampons impossible sur cette image.");
-  }
-
-  // filtrage des textes : confiance, taille plausible, contenu réel,
-  // et rejet des fausses lectures de tampons
-  const circleLike = /^[\sOoQq0©°()·.,_—-]+$/;
+  /* — Phase 2 : compréhension (vision ou locale) — */
   const texts: DetectedText[] = [];
-  for (const line of ocrLines) {
-    const bh = line.bbox.y1 - line.bbox.y0;
-    const bw = line.bbox.x1 - line.bbox.x0;
-    if (line.confidence < 55) continue;
-    if (bh < frame.H * 0.018 || bh > frame.H * 0.24) continue;
-    if (bw < frame.W * 0.03) continue;
-    if (!/[a-zA-Z0-9À-ÿ€%]{2,}/.test(line.text)) continue;
-    const box = {
-      x: (line.bbox.x0 / frame.W) * 100,
-      y: (line.bbox.y0 / frame.H) * 100,
-      w: (bw / frame.W) * 100,
-      h: (bh / frame.H) * 100,
-    };
-    // une « ligne » qui recouvre ≥ 2 tampons est une rangée de cercles mal lue
-    const stampsHit = stampResult.stamps.filter((s) => overlap(s, box) > 0.5).length;
-    if (stampsHit >= 2) continue;
-    if (circleLike.test(line.text)) continue;
-    texts.push({
-      id: nextId("txt"),
-      content: line.text,
-      ...box,
-      fontSize: Math.max(6, Math.round((bh / frame.H) * (520 / CARD_RATIO) * 0.74)),
-      color: sampleTextColor(frame, line.bbox),
-      confidence: Math.round(line.confidence),
-      masked: false,
-    });
-  }
-  if (ocrLines.length > 0 && texts.length === 0 && stampResult.stamps.length === 0) {
-    warnings.push("Aucun texte n'a pu être lu avec assez de confiance — photographiez la carte bien à plat et nette.");
+  let stamps: DetectedStamp[] = [];
+  let stampFill = "#ffffff";
+  let logos: DetectedLogo[] = [];
+  let program: ImportProgram | null = null;
+
+  if (vision) {
+    await tick(3);
+    for (const el of vision.elements ?? []) {
+      if (el.kind !== "text" || !el.content?.trim() || !el.bbox) continue;
+      const b: Box = { x: el.bbox.x * 100, y: el.bbox.y * 100, w: el.bbox.w * 100, h: el.bbox.h * 100 };
+      const pxBox = {
+        x0: (b.x / 100) * frame.W, y0: (b.y / 100) * frame.H,
+        x1: ((b.x + b.w) / 100) * frame.W, y1: ((b.y + b.h) / 100) * frame.H,
+      };
+      texts.push({
+        id: nextId("txt"),
+        content: el.content.trim(),
+        ...b,
+        fontSize: Math.max(6, Math.round((el.fontSize ?? el.bbox.h * 0.8) * (520 / CARD_RATIO) * 0.9)),
+        color: el.color && /^#[0-9a-f]{6}$/i.test(el.color) ? el.color : sampleTextColor(frame, pxBox),
+        confidence: 92,
+        masked: false,
+      });
+    }
+
+    await tick(4);
+    const prog = vision.loyaltyProgram;
+    if (prog?.detected) {
+      const positions = prog.stampPositions ?? [];
+      // x,y = centre normalisé ; r = rayon relatif à la LARGEUR de carte.
+      // En % : largeur = 2r×100 ; hauteur = 2r×100×(W/H) car l'axe vertical
+      // est normalisé sur la hauteur (W/H = ratio carte).
+      const ratio = frame.W / frame.H;
+      stamps = positions
+        .sort((a, b) => a.index - b.index)
+        .map((p) => {
+          const r = Math.max(0.015, Math.min(0.12, p.r ?? 0.04));
+          return {
+            x: (p.x - r) * 100,
+            y: (p.y - r * ratio) * 100,
+            w: r * 2 * 100,
+            h: r * 2 * ratio * 100,
+          };
+        });
+      // couleur intérieure réelle mesurée au centre du premier tampon
+      if (stamps[0]) {
+        const c = stamps[0];
+        const cx = Math.round(((c.x + c.w / 2) / 100) * frame.W);
+        const cy = Math.round(((c.y + c.h / 2) / 100) * frame.H);
+        const d = frame.ctx.getImageData(Math.max(0, cx - 2), Math.max(0, cy - 2), 4, 4).data;
+        stampFill = rgbToHex(d[0], d[1], d[2]);
+      }
+      program = {
+        type: prog.type === "points" ? "points" : "tampons",
+        totalStamps: prog.totalStamps ?? stamps.length,
+        tiers: (prog.tiers ?? [])
+          .filter((t) => t.position >= 1 && t.reward?.trim())
+          .map((t) => ({ position: Math.round(t.position), reward: t.reward.trim() })),
+        instructions: prog.instructions?.trim() || undefined,
+        social: prog.socialHandles?.[0]?.trim() || undefined,
+        website: prog.website?.trim() || undefined,
+      };
+    }
+
+    await tick(5);
+    for (const el of vision.elements ?? []) {
+      if ((el.kind !== "logo" && el.kind !== "icon" && el.kind !== "shape") || !el.bbox) continue;
+      const b: Box = { x: el.bbox.x * 100, y: el.bbox.y * 100, w: el.bbox.w * 100, h: el.bbox.h * 100 };
+      if (b.w < 1 || b.h < 1) continue;
+      if (stamps.some((s) => overlap(s, b) > 0.6)) continue; // les tampons sont gérés à part
+      try {
+        logos.push({
+          id: nextId("logo"),
+          ...b,
+          dataUrl: cropBox(frame, b),
+          description: el.description || (el.kind === "shape" ? "Forme" : "Logo"),
+          masked: false,
+        });
+      } catch { /* crop impossible : on ignore ce logo */ }
+    }
+    logos = logos.slice(0, 8);
+    for (const w of vision.warnings ?? []) warnings.push(`Lecture incertaine : ${w}`);
+  } else {
+    /* — moteur local : OCR + formes — */
+    await tick(3);
+    let ocrLines: OcrLine[] = [];
+    try {
+      ocrLines = await runOcr(frame);
+    } catch {
+      warnings.push(
+        "Lecture des textes indisponible (module OCR non chargé). Les textes restent dans l'image de fond.",
+      );
+    }
+
+    await tick(4);
+    let blobs: BlobResult = { stamps: [], fill: "#ffffff", logoBoxes: [] };
+    try {
+      blobs = detectBlobs(frame, palette[0]);
+    } catch {
+      warnings.push("Détection des tampons impossible sur cette image.");
+    }
+    stamps = blobs.stamps;
+    stampFill = blobs.fill;
+
+    // filtrage OCR : confiance, taille plausible, et rejet des fausses
+    // lectures de rangées de tampons (« OOOOO »)
+    const circleLike = /^[\sOoQq0©°()·.,_—-]+$/;
+    for (const line of ocrLines) {
+      const bh = line.bbox.y1 - line.bbox.y0;
+      const bw = line.bbox.x1 - line.bbox.x0;
+      if (line.confidence < 55) continue;
+      if (bh < frame.H * 0.018 || bh > frame.H * 0.24) continue;
+      if (bw < frame.W * 0.03) continue;
+      if (!/[a-zA-Z0-9À-ÿ€%]{2,}/.test(line.text)) continue;
+      const box: Box = {
+        x: (line.bbox.x0 / frame.W) * 100,
+        y: (line.bbox.y0 / frame.H) * 100,
+        w: (bw / frame.W) * 100,
+        h: (bh / frame.H) * 100,
+      };
+      const stampsHit = stamps.filter((s) => overlap(s, box) > 0.5).length;
+      if (stampsHit >= 2) continue;
+      if (circleLike.test(line.text)) continue;
+      texts.push({
+        id: nextId("txt"),
+        content: line.text,
+        ...box,
+        fontSize: Math.max(6, Math.round((bh / frame.H) * (520 / CARD_RATIO) * 0.74)),
+        color: sampleTextColor(frame, line.bbox),
+        confidence: Math.round(line.confidence),
+        masked: false,
+      });
+    }
+    if (ocrLines.length > 0 && texts.length === 0 && stamps.length === 0) {
+      warnings.push("Aucun texte lu avec assez de confiance — photographiez la carte bien à plat et nette.");
+    }
+
+    // Phase 4 locale : les textes situés DANS un tampon sont des paliers
+    const tiers: ImportTier[] = [];
+    for (const t of texts) {
+      const idx = stamps.findIndex((s) => overlap(s, t) > 0.5);
+      if (idx !== -1) tiers.push({ position: idx + 1, reward: t.content });
+    }
+    // passe ciblée dans chaque tampon (les petits « -5€ » échappent à l'OCR global)
+    try {
+      const stampTiers = await ocrStampTiers(frame, stamps);
+      for (const t of stampTiers) {
+        if (!tiers.some((x) => x.position === t.position)) tiers.push(t);
+      }
+    } catch {
+      warnings.push("Lecture des paliers à l'intérieur des tampons impossible.");
+    }
+    const social = texts.find((t) => t.content.startsWith("@"))?.content;
+    if (stamps.length >= 3) {
+      program = {
+        type: "tampons",
+        totalStamps: stamps.length,
+        tiers: tiers.sort((a, b) => a.position - b.position),
+        social,
+      };
+    }
+
+    await tick(5);
+    // logos locaux : grandes zones graphiques hors tampons et hors textes
+    try {
+      logos = blobs.logoBoxes
+        .filter((b) => !texts.some((t) => overlap(b, t) > 0.5))
+        .map((b) => ({
+          id: nextId("logo"),
+          ...b,
+          dataUrl: cropBox(frame, b),
+          description: "Zone graphique",
+          masked: false,
+        }));
+    } catch { /* best effort */ }
   }
 
-  await tick(5);
+  // QR : toujours local (jsQR décode la vraie valeur, la vision non)
   let qr: DetectedQr | null = null;
   try {
     qr = await detectQr(frame);
-  } catch {
-    // jsQR indisponible : pas bloquant
-  }
+  } catch { /* non bloquant */ }
 
+  /* — Phase 3 : masquage sûr du fond — */
   await tick(6);
-  // masquage des textes : uniquement quand l'anneau autour est uni, et jamais
-  // à l'intérieur d'un tampon (le composant tampon recouvrira l'original).
   const clean = makeCanvas(frame.W, frame.H);
   clean.ctx.drawImage(frame.canvas, 0, 0);
-  for (const t of texts) {
-    if (stampResult.stamps.some((s) => overlap(s, t) > 0.3)) continue;
+  const tryMask = (box: Box, pad = 3): boolean => {
     const b = {
-      x0: Math.round((t.x / 100) * frame.W) - 3,
-      y0: Math.round((t.y / 100) * frame.H) - 3,
-      x1: Math.round(((t.x + t.w) / 100) * frame.W) + 3,
-      y1: Math.round(((t.y + t.h) / 100) * frame.H) + 3,
+      x0: Math.round((box.x / 100) * frame.W) - pad,
+      y0: Math.round((box.y / 100) * frame.H) - pad,
+      x1: Math.round(((box.x + box.w) / 100) * frame.W) + pad,
+      y1: Math.round(((box.y + box.h) / 100) * frame.H) + pad,
     };
     const ring = ringStats(frame, b);
-    if (ring.std < 14) {
-      clean.ctx.fillStyle = rgbToHex(ring.r, ring.g, ring.b);
-      clean.ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-      t.masked = true;
-    }
+    if (ring.std >= 14) return false;
+    clean.ctx.fillStyle = rgbToHex(ring.r, ring.g, ring.b);
+    clean.ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    return true;
+  };
+  for (const t of texts) {
+    if (stamps.some((s) => overlap(s, t) > 0.3)) continue; // jamais dans un tampon
+    t.masked = tryMask(t);
   }
-  const unmasked = texts.filter((t) => !t.masked);
-  if (unmasked.length > 0) {
+  for (const lg of logos) {
+    lg.masked = tryMask(lg, 2);
+  }
+  const unmaskedTexts = texts.filter((t) => !t.masked && !stamps.some((s) => overlap(s, t) > 0.3));
+  if (unmaskedTexts.length > 0) {
     warnings.push(
-      `${unmasked.length} texte(s) n'ont pas pu être séparés du fond (zone non unie) — ils restent dans l'image et ne sont pas recréés par défaut, pour éviter un doublon visuel.`,
+      `${unmaskedTexts.length} texte(s) n'ont pas pu être séparés du fond (zone non unie) — non recréés par défaut pour éviter un doublon.`,
+    );
+  }
+  const unmaskedLogos = logos.filter((l) => !l.masked);
+  if (unmaskedLogos.length > 0) {
+    warnings.push(
+      `${unmaskedLogos.length} logo(s) n'ont pas pu être détachés du fond — si vous les déplacez, l'original restera visible dessous. Vous pouvez le recouvrir manuellement.`,
     );
   }
 
@@ -598,23 +915,15 @@ export async function analyzeCardImage(
     palette,
     theme,
     texts,
-    stamps: stampResult.stamps,
-    stampFill: stampResult.fill,
+    stamps,
+    stampFill,
+    logos,
     qr,
+    program,
+    engine: vision ? "vision" : "local",
     lowQuality,
     warnings,
   };
-}
-
-function overlap(
-  a: { x: number; y: number; w: number; h: number },
-  b: { x: number; y: number; w: number; h: number },
-) {
-  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
-  const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-  const inter = ix * iy;
-  const min = Math.min(a.w * a.h, b.w * b.h);
-  return min > 0 ? inter / min : 0;
 }
 
 /* ----------------------------------------------------------------- rotate */

@@ -12,6 +12,7 @@
     "prebuild": "node scripts/setup-ocr.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "@supabase/supabase-js": "^2.110.1",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/fra": "^1.0.0",
