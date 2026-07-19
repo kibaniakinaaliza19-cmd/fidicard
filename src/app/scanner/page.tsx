@@ -20,12 +20,15 @@ import {
   Radio,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
+import ScanSimulator from "@/components/scanner/ScanSimulator";
 import { usePublishStore } from "@/store/publishStore";
 import { usePublishHydration, useCardCreated } from "@/lib/usePublish";
 import { getConfigSteps, configProgress } from "@/lib/configSteps";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { usePlan } from "@/lib/usePlan";
+import { useLoyaltyStore } from "@/store/loyaltyStore";
+import { validerProgramme } from "@/lib/loyalty";
 
 const DEMO_CODE = "7F8K92";
 const JOIN_URL = `https://fidicard.com/join/${DEMO_CODE}`;
@@ -69,7 +72,9 @@ export default function ScannerPage() {
   const [justPublished, setJustPublished] = useState(false);
   const qrRef = useRef<SVGSVGElement>(null);
 
-  const steps = getConfigSteps(published, cardCreated);
+  const loyaltyConfig = useLoyaltyStore((s) => s.config);
+  const programOk = validerProgramme(loyaltyConfig).length === 0;
+  const steps = getConfigSteps(published, cardCreated, programOk);
   const pct = configProgress(steps);
   const preSteps = steps.filter((s) => s.key !== "publish");
   const canPublish = preSteps.every((s) => s.done);
@@ -258,6 +263,11 @@ export default function ScannerPage() {
                           <CreditCard size={13} /> Créer
                         </Link>
                       )}
+                      {step.key === "program" && !step.done && (
+                        <Link href="/carte" className="ml-auto flex items-center gap-1 text-xs font-medium text-[var(--accent-1)]">
+                          Configurer
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -283,9 +293,12 @@ export default function ScannerPage() {
                 initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25 }}
-                className="rounded-3xl border p-8"
-                style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+                className="space-y-6"
               >
+                {/* le scan applique désormais les règles du programme */}
+                <ScanSimulator />
+
+                <div className="rounded-3xl border p-8" style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
                 <h2 className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--text)" }}>
                   <QrCode size={16} className="text-[var(--accent-1)]" /> Comment ça marche
                 </h2>
@@ -314,6 +327,7 @@ export default function ScannerPage() {
                 >
                   Dépublier le programme
                 </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

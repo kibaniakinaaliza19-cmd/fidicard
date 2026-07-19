@@ -18,12 +18,16 @@ create table if not exists commerces (
   owner_id uuid not null references users (id) on delete cascade,
   nom text not null,
   plan text not null default 'starter' check (plan in ('starter', 'pro', 'business')),
-  -- Programme de fidélité (alimenté par l'import de carte — Phase 4)
-  mode_fidelite text not null default 'tampons' check (mode_fidelite in ('tampons', 'points')),
+  -- Programme de fidélité (couche Fonctionnalités — src/lib/loyalty.ts ;
+  -- alimenté à la main ou par l'import de carte)
+  mode_fidelite text not null default 'stamps' check (mode_fidelite in ('stamps', 'points')),
   objectif_tampons integer not null default 10,
-  -- ex: [{"position": 3, "reward": "-5€"}, {"position": 6, "reward": "-15%"},
-  --      {"position": 10, "reward": "-50%"}]
+  -- {"type":"passage"} | {"type":"montant_minimum","seuil":10} | {"type":"montant_palier","tranche":15}
+  regle_attribution jsonb not null default '{"type":"passage"}'::jsonb,
+  taux_conversion integer not null default 10, -- mode points : 1 € = N points
+  -- ex: [{"position": 3, "label": "-5€", "description": "5 € de réduction", "type": "montant"}]
   paliers jsonb not null default '[]'::jsonb,
+  programme_publie boolean not null default false,
   consigne text,
   reseau_social text,
   site_web text,
@@ -70,11 +74,32 @@ create table if not exists clients (
   telephone text,
   points integer not null default 0,
   tampons integer not null default 0,
+  -- identifiant UNIQUE du QR de la carte client — c'est lui que le commerçant
+  -- scanne ; jamais partagé entre deux clients
+  code_client text unique,
+  -- positions des paliers déjà débloqués dans le cycle en cours
+  paliers_atteints jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- Un enregistrement par scan : la trace factuelle de chaque passage.
+-- (Toutes les écritures scan → clients + passages doivent être transactionnelles.)
+create table if not exists passages (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients (id) on delete cascade,
+  commerce_id uuid references commerces (id) on delete cascade,
+  montant numeric,
+  tampons_ajoutes integer not null default 0,
+  points_ajoutes integer not null default 0,
+  -- palier(s) débloqué(s) par ce scan, ex: [{"position":6,"label":"-15%"}]
+  paliers_declenches jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_cards_user_id on cards (user_id);
 create index if not exists idx_clients_card_id on clients (card_id);
+create index if not exists idx_clients_code on clients (code_client);
+create index if not exists idx_passages_client_id on passages (client_id);
 
 -- Example template configuration_json payload (mirrors src/data/templates.ts):
 -- {

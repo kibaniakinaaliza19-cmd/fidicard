@@ -19,12 +19,17 @@ export function hasSavedCard(): boolean {
   }
 }
 
-export function getConfigSteps(published: boolean, cardCreated: boolean): ConfigStep[] {
+export function getConfigSteps(
+  published: boolean,
+  cardCreated: boolean,
+  programOk: boolean = true,
+): ConfigStep[] {
   return [
     { key: "info", label: "Informations du commerce", done: true },
     { key: "logo", label: "Logo ajouté", done: true },
     { key: "colors", label: "Couleurs configurées", done: true },
     { key: "card", label: "Carte de fidélité créée", done: cardCreated },
+    { key: "program", label: "Programme de fidélité configuré (règles + paliers)", done: programOk },
     { key: "publish", label: "Programme publié", done: published },
   ];
 }

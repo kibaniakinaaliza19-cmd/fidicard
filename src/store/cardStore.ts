@@ -4,7 +4,9 @@ import { cloneLayer, makeId } from "@/lib/layerFactory";
 import { createBlankCard } from "@/data/blankCard";
 
 export type DrawerId =
+  | "fidelite"
   | "modeles"
+  | "tampons"
   | "texte"
   | "images"
   | "icones"
@@ -45,6 +47,8 @@ interface CardState {
   clearSelection: () => void;
 
   addLayer: (layer: Layer) => void;
+  /** transformation en masse des calques (grille de tampons, paliers…) — un seul point d'historique */
+  replaceLayers: (mutate: (layers: Layer[]) => Layer[]) => void;
   updateLayerLive: (id: string, patch: Partial<Layer>) => void;
   updateLayersLive: (patches: Record<string, Partial<Layer>>) => void;
   commitLayerChange: (id: string, patch: Partial<Layer>) => void;
@@ -117,6 +121,17 @@ export const useCardStore = create<CardState>((set, get) => ({
       card.layers.push(layer);
       card.updatedAt = Date.now();
       return { card, selectedIds: [layer.id] };
+    }),
+
+  replaceLayers: (mutate) =>
+    set((state) => {
+      const card = cloneCard(state.card);
+      card.layers = mutate(card.layers);
+      card.layers.forEach((l, i) => (l.zIndex = i + 1));
+      card.updatedAt = Date.now();
+      const truncated = state.history.slice(0, state.historyIndex + 1);
+      const next = [...truncated, cloneCard(card)].slice(-HISTORY_LIMIT);
+      return { card, selectedIds: [], history: next, historyIndex: next.length - 1 };
     }),
 
   updateLayerLive: (id, patch) =>

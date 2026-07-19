@@ -27,7 +27,7 @@ import Modal from "@/components/ui/Modal";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import { useUIStore } from "@/store/uiStore";
 import { useCardStore } from "@/store/cardStore";
-import { useProgramStore } from "@/store/programStore";
+import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { CARD_RATIO } from "@/types/layer";
 import {
   analyzeCardImage,
@@ -53,7 +53,7 @@ export default function ImportCardModal() {
   const setOpen = useUIStore((s) => s.setImportCardOpen);
   const pushToast = useUIStore((s) => s.pushToast);
   const applyTemplate = useCardStore((s) => s.applyTemplate);
-  const setProgram = useProgramStore((s) => s.setProgram);
+  const applyImportedProgram = useLoyaltyStore((s) => s.applyImportedProgram);
 
   const [step, setStep] = useState<Step>("upload");
   const [image, setImage] = useState<string | null>(null);
@@ -184,7 +184,9 @@ export default function ImportCardModal() {
   function createCard() {
     if (!analysis || !choices) return;
     applyTemplate(importToCard(analysis, choices));
-    setProgram(finalProgram(analysis, choices)); // Phase 4 : la logique métier
+    // Phase 4 : la logique lue sur la carte alimente le moteur de fidélité —
+    // le panneau « Fidélité » est pré-rempli, rien à ressaisir.
+    applyImportedProgram(finalProgram(analysis, choices));
     pushToast(
       elementCount > 0
         ? `Carte importée — ${elementCount} élément(s) sélectionnables + le fond.`

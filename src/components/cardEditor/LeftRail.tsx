@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  Trophy,
   LayoutTemplate,
+  CircleDot,
   Type,
   ImagePlus,
   Smile,
@@ -13,7 +15,9 @@ import {
   Wallpaper,
 } from "lucide-react";
 import { useCardStore, type DrawerId } from "@/store/cardStore";
+import FideliteDrawer from "./drawers/FideliteDrawer";
 import TemplatesDrawer from "./drawers/TemplatesDrawer";
+import TamponsDrawer from "./drawers/TamponsDrawer";
 import TextDrawer from "./drawers/TextDrawer";
 import UploadDrawer from "./drawers/UploadDrawer";
 import IconsDrawer from "./drawers/IconsDrawer";
@@ -23,7 +27,9 @@ import ColorsDrawer from "./drawers/ColorsDrawer";
 import BackgroundDrawer from "./drawers/BackgroundDrawer";
 
 const rail: { id: DrawerId; label: string; icon: typeof Type }[] = [
+  { id: "fidelite", label: "Fidélité", icon: Trophy },
   { id: "modeles", label: "Modèles", icon: LayoutTemplate },
+  { id: "tampons", label: "Tampons", icon: CircleDot },
   { id: "texte", label: "Texte", icon: Type },
   { id: "images", label: "Images", icon: ImagePlus },
   { id: "icones", label: "Icônes", icon: Smile },
@@ -65,7 +71,9 @@ export default function LeftRail() {
         })}
       </div>
 
+      {activeDrawer === "fidelite" && <FideliteDrawer />}
       {activeDrawer === "modeles" && <TemplatesDrawer />}
+      {activeDrawer === "tampons" && <TamponsDrawer />}
       {activeDrawer === "texte" && <TextDrawer />}
       {activeDrawer === "images" && <UploadDrawer title="Images" />}
       {activeDrawer === "icones" && <IconsDrawer />}
