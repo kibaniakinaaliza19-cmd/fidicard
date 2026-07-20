@@ -229,7 +229,9 @@ export function importToCard(a: ImportAnalysis, c: ImportChoices): CardDoc {
       gradientAngle: 135,
       pattern: "dots",
       patternColor: "#ffffff",
-      image: a.backgroundDataUrl,
+      // tampons convertis en calques → fond SANS la grille imprimée, sinon
+      // elle réapparaît en double dès que la grille est régénérée
+      image: c.convertStamps ? a.backgroundNoStampsDataUrl || a.backgroundDataUrl : a.backgroundDataUrl,
       imageDim: 0, // aucune altération : l'image d'origine reste intacte
     },
     layers,

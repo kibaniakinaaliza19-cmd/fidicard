@@ -93,6 +93,12 @@ export interface ImportProgram {
 export interface ImportAnalysis {
   /** image de la carte (redressée), textes effacés quand c'était sûr */
   backgroundDataUrl: string;
+  /**
+   * même fond avec les tampons imprimés effacés en plus — à utiliser quand les
+   * tampons sont recréés en calques, sinon la grille d'origine reste sous les
+   * calques et réapparaît en double dès que la grille est régénérée
+   */
+  backgroundNoStampsDataUrl: string;
   /** image de la carte (redressée), non nettoyée — pour l'écran de révision */
   originalDataUrl: string;
   frameWidth: number;
@@ -871,7 +877,7 @@ export async function analyzeCardImage(
   await tick(6);
   const clean = makeCanvas(frame.W, frame.H);
   clean.ctx.drawImage(frame.canvas, 0, 0);
-  const tryMask = (box: Box, pad = 3): boolean => {
+  const tryMask = (box: Box, pad = 3, ctx: CanvasRenderingContext2D = clean.ctx): boolean => {
     const b = {
       x0: Math.round((box.x / 100) * frame.W) - pad,
       y0: Math.round((box.y / 100) * frame.H) - pad,
@@ -880,8 +886,8 @@ export async function analyzeCardImage(
     };
     const ring = ringStats(frame, b);
     if (ring.std >= 14) return false;
-    clean.ctx.fillStyle = rgbToHex(ring.r, ring.g, ring.b);
-    clean.ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    ctx.fillStyle = rgbToHex(ring.r, ring.g, ring.b);
+    ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
     return true;
   };
   for (const t of texts) {
@@ -904,11 +910,29 @@ export async function analyzeCardImage(
     );
   }
 
+  // second fond « sans tampons » : la grille imprimée est effacée pour que les
+  // calques « Tampon N » soient la seule grille visible, même après régénération
+  const cleanNoStamps = makeCanvas(frame.W, frame.H);
+  cleanNoStamps.ctx.drawImage(clean.canvas, 0, 0);
+  let stampsNotErased = 0;
+  for (const s of stamps) {
+    const padPx = Math.max(3, Math.round((s.w / 100) * frame.W * 0.08));
+    if (!tryMask(s, padPx, cleanNoStamps.ctx)) stampsNotErased++;
+  }
+  if (stampsNotErased > 0) {
+    warnings.push(
+      `${stampsNotErased} tampon(s) n'ont pas pu être effacés du fond (zone non unie) — si vous régénérez la grille, l'ancienne peut rester visible dessous.`,
+    );
+  }
+
   await tick(7);
   const backgroundDataUrl = clean.canvas.toDataURL("image/jpeg", 0.92);
+  const backgroundNoStampsDataUrl =
+    stamps.length > 0 ? cleanNoStamps.canvas.toDataURL("image/jpeg", 0.92) : backgroundDataUrl;
 
   return {
     backgroundDataUrl,
+    backgroundNoStampsDataUrl,
     originalDataUrl,
     frameWidth: frame.W,
     frameHeight: frame.H,
