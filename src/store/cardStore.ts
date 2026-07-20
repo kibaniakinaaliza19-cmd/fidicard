@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import type { CardBackground, CardDoc, Layer } from "@/types/layer";
+import type { CardBackground, CardDoc, Layer, Zone } from "@/types/layer";
 import { cloneLayer, makeId } from "@/lib/layerFactory";
 import { createBlankCard } from "@/data/blankCard";
+import { migrateCardDoc } from "@/lib/migrateCard";
 
 export type DrawerId =
   | "fidelite"
@@ -48,6 +49,9 @@ interface CardState {
   addLayer: (layer: Layer) => void;
   /** transformation en masse des calques (grille de tampons, paliers…) — un seul point d'historique */
   replaceLayers: (mutate: (layers: Layer[]) => Layer[]) => void;
+  /** patch d'une zone fonctionnelle (v2) — un point d'historique */
+  updateZone: (id: string, patch: Partial<Zone>) => void;
+  addZone: (zone: Zone) => void;
   updateLayerLive: (id: string, patch: Partial<Layer>) => void;
   updateLayersLive: (patches: Record<string, Partial<Layer>>) => void;
   commitLayerChange: (id: string, patch: Partial<Layer>) => void;
@@ -131,6 +135,27 @@ export const useCardStore = create<CardState>((set, get) => ({
       const truncated = state.history.slice(0, state.historyIndex + 1);
       const next = [...truncated, cloneCard(card)].slice(-HISTORY_LIMIT);
       return { card, selectedIds: [], history: next, historyIndex: next.length - 1 };
+    }),
+
+  addZone: (zone) =>
+    set((state) => {
+      const card = cloneCard(state.card);
+      card.version = 2;
+      card.zones = [...(card.zones ?? []), zone];
+      card.updatedAt = Date.now();
+      const truncated = state.history.slice(0, state.historyIndex + 1);
+      const next = [...truncated, cloneCard(card)].slice(-HISTORY_LIMIT);
+      return { card, history: next, historyIndex: next.length - 1 };
+    }),
+
+  updateZone: (id, patch) =>
+    set((state) => {
+      const card = cloneCard(state.card);
+      card.zones = (card.zones ?? []).map((z) => (z.id === id ? ({ ...z, ...patch } as Zone) : z));
+      card.updatedAt = Date.now();
+      const truncated = state.history.slice(0, state.historyIndex + 1);
+      const next = [...truncated, cloneCard(card)].slice(-HISTORY_LIMIT);
+      return { card, history: next, historyIndex: next.length - 1 };
     }),
 
   updateLayerLive: (id, patch) =>
@@ -343,14 +368,18 @@ export const useCardStore = create<CardState>((set, get) => ({
 
   applyTemplate: (doc) =>
     set(() => {
-      const card = cloneCard(doc);
+      // tout document entrant passe en v2 : la grille devient une zone
+      const card = migrateCardDoc(cloneCard(doc));
       card.id = makeId("card");
       card.updatedAt = Date.now();
       const next = [cloneCard(card)];
       return { card, selectedIds: [], history: next, historyIndex: 0 };
     }),
 
-  loadCard: (doc) => set({ card: doc, selectedIds: [], history: [cloneCard(doc)], historyIndex: 0 }),
+  loadCard: (doc) => {
+    const card = migrateCardDoc(doc);
+    set({ card, selectedIds: [], history: [cloneCard(card)], historyIndex: 0 });
+  },
 
   resetCard: () => {
     const fresh = createBlankCard();

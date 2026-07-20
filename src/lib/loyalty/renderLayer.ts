@@ -13,6 +13,7 @@
 // calques de lib/stampLayers.ts, pour que la migration v1→v2 soit invisible.
 
 import type {
+  IconLayer,
   Layer,
   ShapeLayer,
   StampGridZone,
@@ -24,8 +25,6 @@ import type { LoyaltyConfig } from "@/lib/loyalty";
 
 /** hauteur d'un tampon (en % de la hauteur carte) pour une largeur donnée */
 export const STAMP_HEIGHT_RATIO = 1.55;
-/** pas horizontal maximal entre deux tampons (%) — grille aérée */
-const MAX_STEP = 14;
 
 export interface RenderClientState {
   tampons?: number;
@@ -46,6 +45,26 @@ function radiusOf(shape: StampShape): number {
   return shape === "cercle" ? 50 : shape === "arrondi" ? 25 : 6;
 }
 
+/** zone neuve avec la géométrie classique (pas 14 %, 1 ou 2 rangées centrées) */
+export function createDefaultStampGridZone(id: string, total: number, size = 9): StampGridZone {
+  const shown = clamp(Math.round(total), 1, 24);
+  const perRow = shown <= 6 ? shown : Math.ceil(shown / 2);
+  const rows = Math.ceil(shown / perRow);
+  const hSize = size * STAMP_HEIGHT_RATIO;
+  const step = perRow > 1 ? Math.min(14, (84 - size) / (perRow - 1)) : 0;
+  const gridW = (perRow - 1) * step + size;
+  const gridH = (rows - 1) * (hSize + 3) + hSize;
+  return {
+    id,
+    kind: "stampGrid",
+    frame: { x: 8 + (84 - gridW) / 2, y: rows === 1 ? 52 : 46, w: gridW, h: gridH },
+    size,
+    shape: "cercle",
+    perRow: "auto",
+    showTierLabels: true,
+  };
+}
+
 /** position (x, y) du tampon d'index i (0-based) dans la zone */
 export function stampPosition(
   zone: StampGridZone,
@@ -56,10 +75,10 @@ export function stampPosition(
     zone.perRow === "auto" ? (total <= 6 ? total : Math.ceil(total / 2)) : clamp(zone.perRow, 1, total);
   const rows = Math.ceil(total / perRow);
   const size = clamp(zone.size, 2, 30);
-  const hSize = size * STAMP_HEIGHT_RATIO;
-  const step = perRow > 1 ? Math.min(MAX_STEP, (zone.frame.w - size) / (perRow - 1)) : 0;
-  const gridW = (perRow - 1) * step + size;
-  const startX = zone.frame.x + (zone.frame.w - gridW) / 2;
+  const hSize = zone.stampHeight ?? size * STAMP_HEIGHT_RATIO;
+  // la grille épouse exactement son cadre : le pas se déduit de la largeur
+  const step = perRow > 1 ? (zone.frame.w - size) / (perRow - 1) : 0;
+  const startX = perRow > 1 ? zone.frame.x : zone.frame.x + (zone.frame.w - size) / 2;
   const rowStep = rows > 1 ? (zone.frame.h - hSize) / (rows - 1) : 0;
   const startY = rows > 1 ? zone.frame.y : zone.frame.y + (zone.frame.h - hSize) / 2;
   const r = Math.floor(i / perRow);
@@ -70,15 +89,16 @@ export function stampPosition(
 function renderStampGrid(zone: StampGridZone, config: LoyaltyConfig, opts: RenderOptions): Layer[] {
   if (config.mode !== "stamps") return [];
   const total = clamp(Math.round(config.totalStamps), 1, 24);
-  const filled = clamp(Math.round(opts.client?.tampons ?? 0), 0, total);
-  const style = config.stampStyle;
+  const filled = clamp(Math.round(opts.client?.tampons ?? zone.previewFilled ?? 0), 0, total);
+  const style = { ...config.stampStyle, ...zone.styleOverride };
   let z = opts.zBase ?? 1000;
   const layers: Layer[] = [];
 
   for (let i = 0; i < total; i++) {
     const p = stampPosition(zone, total, i);
     const on = i < filled;
-    const isTier = config.paliers.some((t) => t.position === i + 1);
+    // l'emphase de palier (anneau + libellé) forme un tout : masquée ensemble
+    const isTier = zone.showTierLabels && config.paliers.some((t) => t.position === i + 1);
     layers.push({
       id: `${zone.id}:tampon:${i + 1}`,
       type: "shape",
@@ -96,9 +116,30 @@ function renderStampGrid(zone: StampGridZone, config: LoyaltyConfig, opts: Rende
       shape: zone.shape === "cercle" ? "circle" : "rect",
       radius: radiusOf(zone.shape),
       fill: on ? style.filled : style.empty,
-      stroke: style.border,
-      strokeWidth: isTier ? 2 : 1,
+      stroke: isTier && style.border === "transparent" ? config.stampStyle.border : style.border,
+      strokeWidth: isTier ? 2 : style.border === "transparent" ? 0 : 1,
     } satisfies ShapeLayer);
+
+    if (zone.icon) {
+      const ib = zone.iconBox ?? { dx: p.w * 0.2, dy: p.h * 0.19, w: p.w * 0.6, h: p.h * 0.63 };
+      layers.push({
+        id: `${zone.id}:icone:${i + 1}`,
+        type: "icon",
+        name: `Icône ${i + 1}`,
+        x: p.x + ib.dx,
+        y: p.y + ib.dy,
+        width: ib.w,
+        height: ib.h,
+        rotation: 0,
+        opacity: 100,
+        zIndex: z++,
+        locked: false,
+        hidden: false,
+        groupId: zone.id,
+        icon: zone.icon,
+        color: on ? "#ffffff" : zone.iconColor ?? "rgba(255,255,255,0.4)",
+      } satisfies IconLayer);
+    }
   }
 
   if (zone.showTierLabels) {

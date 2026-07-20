@@ -39,6 +39,8 @@ export default function FideliteDrawer() {
   const clearCascade = useLoyaltyStore((s) => s.clearCascade);
   const replaceLayers = useCardStore((s) => s.replaceLayers);
   const cardStamps = useCardStore((s) => getStampLayers(s.card.layers).length);
+  // v2 : la carte rend sa grille depuis la config — aucune synchro manuelle
+  const isZoneCard = useCardStore((s) => s.card.version === 2);
   const pushToast = useUIStore((s) => s.pushToast);
   const published = usePublishStore((s) => s.published);
 
@@ -59,6 +61,7 @@ export default function FideliteDrawer() {
   }
 
   function syncToCard(cfg: LoyaltyConfig = config) {
+    if (isZoneCard) return;
     if (cardStamps === 0) {
       replaceLayers((layers) => regenerateStampGrid(layers, cfg));
       pushToast(`Grille de ${cfg.totalStamps} tampons ajoutée à la carte, paliers affichés.`);
@@ -308,7 +311,7 @@ export default function FideliteDrawer() {
           </p>
         )}
 
-        {isStamps && (
+        {isStamps && !isZoneCard && (
           <button
             onClick={() => syncToCard()}
             className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold text-white transition-transform hover:scale-[1.01]"

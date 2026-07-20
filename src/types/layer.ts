@@ -106,11 +106,23 @@ export interface StampGridZone {
   frame: ZoneFrame;
   /** largeur d'un tampon en % (hauteur dérivée du ratio carte) */
   size: number;
+  /** hauteur exacte d'un tampon (%) quand elle diffère de size × 1.55 */
+  stampHeight?: number;
   shape: StampShape;
   /** tampons par rangée ; "auto" = 1 rangée jusqu'à 6, sinon 2 */
   perRow: number | "auto";
   /** écrire les libellés de paliers DANS leurs tampons */
   showTierLabels: boolean;
+  /** icône dessinée dans chaque tampon (nom lucide du catalogue) */
+  icon?: string;
+  /** couleur de l'icône d'un tampon non validé */
+  iconColor?: string;
+  /** géométrie d'icône héritée d'une migration : offset/taille en % */
+  iconBox?: { dx: number; dy: number; w: number; h: number };
+  /** remplissage de démonstration dans l'éditeur — jamais l'état d'un client */
+  previewFilled?: number;
+  /** couleurs héritées d'un document migré — priorité sur config.stampStyle */
+  styleOverride?: { empty?: string; border?: string; filled?: string };
 }
 
 export type Zone = StampGridZone;
@@ -127,10 +139,12 @@ export interface CardDoc {
   /** absent ou 1 = document historique tout-en-calques */
   version?: 1 | 2;
   zones?: Zone[];
-  /** copie intégrale du document d'avant migration v1→v2 (rollback) */
-  design_json_v1?: CardDocV1;
+  /**
+   * calques retirés par la migration v1→v2 — le reste du document étant
+   * inchangé, design (layers) + design_json_v1.layers reconstituent le
+   * document v1 à l'identique (rollback)
+   */
+  design_json_v1?: { layers: Layer[] };
 }
-
-export type CardDocV1 = Omit<CardDoc, "version" | "zones" | "design_json_v1">;
 
 export const CARD_RATIO = 85.6 / 53.98;

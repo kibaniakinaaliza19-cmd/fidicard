@@ -7,7 +7,8 @@ import { useCardStore } from "@/store/cardStore";
 import { useUIStore } from "@/store/uiStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { useCustomStampsStore } from "@/store/customStampsStore";
-import { createIconLayer, createImageLayer } from "@/lib/layerFactory";
+import { createIconLayer, createImageLayer, makeId } from "@/lib/layerFactory";
+import { createDefaultStampGridZone } from "@/lib/loyalty/renderLayer";
 import {
   getStampLayers,
   regenerateStampGrid,
@@ -43,9 +44,16 @@ export default function TamponsDrawer() {
   const addCustom = useCustomStampsStore((s) => s.add);
   const removeCustom = useCustomStampsStore((s) => s.remove);
 
+  const updateZone = useCardStore((s) => s.updateZone);
+  const addZone = useCardStore((s) => s.addZone);
+  const setTotalStamps = useLoyaltyStore((s) => s.setTotalStamps);
+
+  // v2 : la grille est une zone déclarative ; v1 : des calques « Tampon N »
+  const zone = card.version === 2 ? card.zones?.find((z) => z.kind === "stampGrid") : undefined;
   const stamps = getStampLayers(card.layers);
-  const currentShape: StampShape = stamps[0] ? shapeOf(stamps[0]) : "cercle";
-  const [size, setSize] = useState(stamps[0]?.width ?? 9);
+  const currentShape: StampShape = zone ? zone.shape : stamps[0] ? shapeOf(stamps[0]) : "cercle";
+  const [size, setSize] = useState(zone?.size ?? stamps[0]?.width ?? 9);
+  const effectiveStyle = { ...config.stampStyle, ...zone?.styleOverride };
 
   // bibliothèque d'icônes-tampons
   const [query, setQuery] = useState("");
@@ -56,16 +64,36 @@ export default function TamponsDrawer() {
   const shown = results.slice(0, limit);
 
   function regen(total: number, shape: StampShape = currentShape) {
+    if (card.version === 2) {
+      // la grille suit la config : changer le total suffit (cascade des paliers)
+      setTotalStamps(total);
+      if (!zone) addZone(createDefaultStampGridZone(makeId("zone"), total, size));
+      pushToast(`Grille de ${total} tampons — la carte suit la configuration.`);
+      return;
+    }
     const cfg = { ...config, totalStamps: total };
     setConfig({ totalStamps: total });
     replaceLayers((layers) => regenerateStampGrid(layers, cfg, { shape, size }));
     pushToast(`Grille de ${total} tampons posée sur la carte.`);
   }
   function restyle(opts: { shape?: StampShape; size?: number }, style = config.stampStyle) {
+    if (zone) {
+      updateZone(zone.id, {
+        ...(opts.shape ? { shape: opts.shape } : {}),
+        ...(opts.size ? { size: opts.size, stampHeight: undefined } : {}),
+      });
+      return;
+    }
     const cfg = { ...config, stampStyle: style };
     replaceLayers((layers) => restyleStamps(layers, cfg, opts));
   }
   function setStyleColor(key: keyof typeof config.stampStyle, value: string) {
+    if (zone) {
+      // fusionner l'héritage migré dans la config puis rendre depuis elle seule
+      setConfig({ stampStyle: { ...config.stampStyle, ...zone.styleOverride, [key]: value } });
+      if (zone.styleOverride) updateZone(zone.id, { styleOverride: undefined });
+      return;
+    }
     const style = { ...config.stampStyle, [key]: value };
     setConfig({ stampStyle: style });
     restyle({}, style);
@@ -215,7 +243,12 @@ export default function TamponsDrawer() {
       {/* ---------------- design de la grille ---------------- */}
       <div className="my-5 h-px" style={{ background: "var(--border)" }} />
 
-      {stamps.length === 0 ? (
+      {zone ? (
+        <p className="mb-4 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-faint)" }}>
+          <CircleDot size={12} className="text-[var(--accent-1)]" />
+          Grille dynamique de {config.totalStamps} tampons — le comportement se règle dans Fidélité.
+        </p>
+      ) : stamps.length === 0 ? (
         <button
           onClick={() => regen(config.totalStamps)}
           className="mb-5 flex w-full cursor-pointer flex-col items-center gap-2 rounded-2xl border border-dashed py-6 transition-colors hover:border-[var(--accent-1)]"
@@ -239,9 +272,9 @@ export default function TamponsDrawer() {
               onClick={() => regen(n)}
               className="cursor-pointer rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors"
               style={{
-                borderColor: config.totalStamps === n && stamps.length === n ? "var(--accent-1)" : "var(--border)",
-                background: config.totalStamps === n && stamps.length === n ? "var(--accent-glow)" : "transparent",
-                color: config.totalStamps === n && stamps.length === n ? "var(--accent-1)" : "var(--text-dim)",
+                borderColor: config.totalStamps === n && (zone || stamps.length === n) ? "var(--accent-1)" : "var(--border)",
+                background: config.totalStamps === n && (zone || stamps.length === n) ? "var(--accent-glow)" : "transparent",
+                color: config.totalStamps === n && (zone || stamps.length === n) ? "var(--accent-1)" : "var(--text-dim)",
               }}
             >
               {n}
@@ -284,9 +317,9 @@ export default function TamponsDrawer() {
 
       <Section label="Couleurs">
         <div className="space-y-2">
-          <ColorRow label="Tampon vide" value={config.stampStyle.empty} onChange={(v) => setStyleColor("empty", v)} />
-          <ColorRow label="Contour" value={config.stampStyle.border} onChange={(v) => setStyleColor("border", v)} />
-          <ColorRow label="Tampon validé / palier" value={config.stampStyle.filled} onChange={(v) => setStyleColor("filled", v)} />
+          <ColorRow label="Tampon vide" value={effectiveStyle.empty} onChange={(v) => setStyleColor("empty", v)} />
+          <ColorRow label="Contour" value={effectiveStyle.border} onChange={(v) => setStyleColor("border", v)} />
+          <ColorRow label="Tampon validé / palier" value={effectiveStyle.filled} onChange={(v) => setStyleColor("filled", v)} />
         </div>
       </Section>
 
