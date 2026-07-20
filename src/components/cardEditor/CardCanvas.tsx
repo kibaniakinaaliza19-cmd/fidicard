@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCardStore } from "@/store/cardStore";
+import { useLoyaltyStore } from "@/store/loyaltyStore";
+import { renderZones } from "@/lib/loyalty/renderLayer";
 import type { Layer, TextLayer } from "@/types/layer";
 import { CARD_RATIO } from "@/types/layer";
 import { backgroundToCss } from "@/lib/backgroundStyle";
@@ -55,7 +57,17 @@ export default function CardCanvas() {
   } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const sortedLayers = [...card.layers].sort((a, b) => a.zIndex - b.zIndex);
+  // v2 : calques éphémères des zones fonctionnelles, rendus depuis la config
+  // de fidélité — affichés au-dessus du design, non interactifs (étape 5)
+  const loyaltyConfig = useLoyaltyStore((s) => s.config);
+  const zoneLayers = useMemo(() => {
+    if (card.version !== 2 || !card.zones?.length) return [];
+    const zBase = card.layers.reduce((m, l) => Math.max(m, l.zIndex), 0) + 1;
+    return renderZones(card.zones, loyaltyConfig, { zBase });
+  }, [card.version, card.zones, card.layers, loyaltyConfig]);
+  const zoneLayerIds = useMemo(() => new Set(zoneLayers.map((l) => l.id)), [zoneLayers]);
+
+  const sortedLayers = [...card.layers, ...zoneLayers].sort((a, b) => a.zIndex - b.zIndex);
   const selectedLayers = card.layers.filter((l) => selectedIds.includes(l.id));
   const primary = selectedLayers.length === 1 ? selectedLayers[0] : null;
 
@@ -238,12 +250,13 @@ export default function CardCanvas() {
 
           {sortedLayers.map((layer) => {
             if (layer.hidden) return null;
-            const selected = selectedIds.includes(layer.id);
+            const isZone = zoneLayerIds.has(layer.id);
+            const selected = !isZone && selectedIds.includes(layer.id);
             return (
               <div
                 key={layer.id}
-                onPointerDown={(e) => handleLayerPointerDown(e, layer)}
-                onDoubleClick={() => layer.type === "text" && setEditingId(layer.id)}
+                onPointerDown={isZone ? undefined : (e) => handleLayerPointerDown(e, layer)}
+                onDoubleClick={isZone ? undefined : () => layer.type === "text" && setEditingId(layer.id)}
                 className="absolute"
                 style={{
                   left: `${layer.x}%`,
@@ -256,6 +269,7 @@ export default function CardCanvas() {
                   cursor: layer.locked ? "default" : "move",
                   outline: selected ? "1.5px solid var(--accent-1)" : "none",
                   outlineOffset: 1,
+                  pointerEvents: isZone ? "none" : undefined,
                 }}
               >
                 <LayerContent layer={layer} editing={editingId === layer.id} />
