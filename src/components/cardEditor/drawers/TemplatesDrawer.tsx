@@ -9,9 +9,11 @@ import { useUIStore } from "@/store/uiStore";
 import {
   templateCatalog,
   templateSectors,
+  templateFamilies,
   templateCount,
   type TemplateEntry,
   type TemplateTag,
+  type StyleFamily,
 } from "@/data/templateCatalog";
 import type { CardDoc } from "@/types/layer";
 
@@ -37,6 +39,7 @@ export default function TemplatesDrawer() {
   const pushToast = useUIStore((s) => s.pushToast);
   const setImportCardOpen = useUIStore((s) => s.setImportCardOpen);
   const [sector, setSector] = useState("Tous");
+  const [family, setFamily] = useState<StyleFamily | "all">("all");
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -45,10 +48,11 @@ export default function TemplatesDrawer() {
   const filtered = useMemo(() => {
     return templateCatalog.filter((t) => {
       if (sector !== "Tous" && t.sector !== sector) return false;
+      if (family !== "all" && t.family !== family) return false;
       if (!q) return true;
       return t.name.toLowerCase().includes(q) || t.sector.toLowerCase().includes(q);
     });
-  }, [sector, q]);
+  }, [sector, family, q]);
 
   // group by sector, preserving catalog (sector-ordered) order
   const groups = useMemo(() => {
@@ -98,6 +102,33 @@ export default function TemplatesDrawer() {
         />
       </div>
 
+      {/* familles de style */}
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+        Style
+      </p>
+      <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+        {([["all", "Tous les styles"], ...templateFamilies.map((f) => [f.id, f.label] as const)] as const).map(
+          ([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setFamily(id as StyleFamily | "all")}
+              className="shrink-0 cursor-pointer rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+              style={{
+                borderColor: family === id ? "var(--accent-1)" : "var(--border)",
+                background: family === id ? "var(--accent-glow)" : "transparent",
+                color: family === id ? "var(--accent-1)" : "var(--text-dim)",
+              }}
+            >
+              {label}
+            </button>
+          ),
+        )}
+      </div>
+
+      {/* secteurs */}
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+        Secteur
+      </p>
       <div className="mb-4 flex flex-wrap gap-1.5">
         {chips.map((c) => (
           <button
@@ -123,7 +154,7 @@ export default function TemplatesDrawer() {
         <div className="space-y-5">
           {groups.map(([sectorName, items]) => {
             // en vue « Tous » sans recherche : 4 modèles par secteur, le reste à la demande
-            const collapsed = sector === "Tous" && !q && !expanded.has(sectorName) && items.length > 4;
+            const collapsed = sector === "Tous" && family === "all" && !q && !expanded.has(sectorName) && items.length > 4;
             const visible = collapsed ? items.slice(0, 4) : items;
             return (
               <div key={sectorName}>

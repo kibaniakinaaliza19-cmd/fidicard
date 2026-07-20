@@ -10,7 +10,10 @@ import { persist } from "zustand/middleware";
 import {
   DEFAULT_LOYALTY_CONFIG,
   inferTierType,
+  rescalePaliers,
+  convertPaliersMode,
   type LoyaltyConfig,
+  type LoyaltyMode,
   type Palier,
   type ProgramPreset,
 } from "@/lib/loyalty";
@@ -21,9 +24,16 @@ interface LoyaltyState {
   /** consigne / réseau social compris depuis une carte importée */
   consigne: string | null;
   social: string | null;
+  /** dernier message de cascade (palier retiré, conversion…) à afficher */
+  lastCascade: string | null;
   setConfig: (patch: Partial<LoyaltyConfig>) => void;
   setPaliers: (paliers: Palier[]) => void;
+  /** change le nombre de tampons ET repositionne les paliers en cascade */
+  setTotalStamps: (total: number) => void;
+  /** bascule tampons↔points ET convertit les paliers */
+  setMode: (mode: LoyaltyMode) => void;
   applyPreset: (preset: ProgramPreset) => void;
+  clearCascade: () => void;
   /** Phase 4 de l'import : la logique lue sur la carte remplit le moteur */
   applyImportedProgram: (p: ImportProgram | null) => void;
   reset: () => void;
@@ -35,11 +45,44 @@ export const useLoyaltyStore = create<LoyaltyState>()(
       config: DEFAULT_LOYALTY_CONFIG,
       consigne: null,
       social: null,
+      lastCascade: null,
 
       setConfig: (patch) => set((s) => ({ config: { ...s.config, ...patch } })),
       setPaliers: (paliers) => set((s) => ({ config: { ...s.config, paliers } })),
+
+      setTotalStamps: (total) =>
+        set((s) => {
+          const { paliers, dropped } = rescalePaliers(s.config.paliers, s.config.totalStamps, total);
+          const msg =
+            dropped.length > 0
+              ? `Le palier « ${dropped.map((d) => d.label).join(", ")} » a été retiré (au-delà de ${total} tampons).`
+              : null;
+          return { config: { ...s.config, totalStamps: total, paliers }, lastCascade: msg };
+        }),
+
+      setMode: (mode) =>
+        set((s) => {
+          if (mode === s.config.mode) return s;
+          const paliers = convertPaliersMode(
+            s.config.paliers,
+            s.config.mode,
+            mode,
+            s.config.totalStamps,
+            s.config.tauxConversion,
+          );
+          return {
+            config: { ...s.config, mode, paliers },
+            lastCascade:
+              mode === "points"
+                ? "Paliers convertis en seuils de points."
+                : "Paliers convertis en positions de tampons.",
+          };
+        }),
+
       applyPreset: (preset) =>
-        set((s) => ({ config: { ...s.config, ...preset.config } })),
+        set((s) => ({ config: { ...s.config, ...preset.config }, lastCascade: null })),
+
+      clearCascade: () => set({ lastCascade: null }),
 
       applyImportedProgram: (p) => {
         if (!p) return;
@@ -60,7 +103,7 @@ export const useLoyaltyStore = create<LoyaltyState>()(
         }));
       },
 
-      reset: () => set({ config: DEFAULT_LOYALTY_CONFIG, consigne: null, social: null }),
+      reset: () => set({ config: DEFAULT_LOYALTY_CONFIG, consigne: null, social: null, lastCascade: null }),
     }),
     { name: "fidicard-loyalty" },
   ),

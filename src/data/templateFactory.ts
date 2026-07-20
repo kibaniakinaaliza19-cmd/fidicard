@@ -10,7 +10,7 @@
 // 16 chiffres, symbole sans-contact, « VALID UNTIL » — une carte de fidélité
 // ne doit jamais ressembler à un moyen de paiement.
 
-import type { TemplateSpec, TemplateLayout, LoyaltyKind } from "@/data/templateCatalog";
+import type { TemplateSpec, TemplateLayout, LoyaltyKind, StyleFamily } from "@/data/templateCatalog";
 
 /* ------------------------------------------------------- palette globale */
 
@@ -290,6 +290,135 @@ const GOALS_P = [300, 200, 500, 400, 250]; // objectifs mode points, par palette
 function slug(s: string) {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-");
 }
+
+/* -------------------------------------------------------------------------- */
+/*  8 familles stylistiques — chaque famille a ses palettes accordées à son    */
+/*  traitement de fond (voir familyBackground dans templateCatalog), donc le   */
+/*  texte reste lisible. Générées PAR-DESSUS les modèles existants.            */
+/* -------------------------------------------------------------------------- */
+
+interface FamilyPalette { bg: [string, string] | string; fg: string; sub: string; accent: string }
+
+const FAMILY_DEFS: Record<
+  StyleFamily,
+  { label: string; layouts: TemplateLayout[]; palettes: FamilyPalette[] }
+> = {
+  minimal: {
+    label: "Minimaliste",
+    layouts: ["classic", "centered"],
+    palettes: [
+      { bg: "#f7f7f5", fg: "#1a1a1a", sub: "#6e6e6e", accent: "#e0492f" },
+      { bg: "#ffffff", fg: "#141414", sub: "#7a7a7a", accent: "#111111" },
+      { bg: "#111214", fg: "#f2f2f2", sub: "#9a9a9a", accent: "#e8503d" },
+      { bg: "#f2efe9", fg: "#2a2620", sub: "#847c6e", accent: "#4a7c59" },
+    ],
+  },
+  bancaire: {
+    label: "Bancaire",
+    layouts: ["banner", "classic"],
+    palettes: [
+      { bg: ["#1b1b1f", "#050506"], fg: "#e9c86a", sub: "#bfa14e", accent: "#d4af37" },
+      { bg: ["#0c1120", "#04060c"], fg: "#dbe4ff", sub: "#93a0c4", accent: "#6478f0" },
+      { bg: ["#232427", "#0d0e10"], fg: "#eef0f2", sub: "#a9adb4", accent: "#b8bcc4" },
+      { bg: ["#1a0f22", "#08040d"], fg: "#efe3ff", sub: "#b79ada", accent: "#a855f7" },
+    ],
+  },
+  photo: {
+    label: "Photo",
+    layouts: ["banner", "classic"],
+    palettes: [
+      { bg: ["#2a1a12", "#070403"], fg: "#fff2e6", sub: "#e3c3a8", accent: "#f2a057" },
+      { bg: ["#0f2420", "#04100c"], fg: "#e8fbf2", sub: "#a7d8c6", accent: "#2fbf71" },
+      { bg: ["#221019", "#0a040a"], fg: "#ffe6ee", sub: "#d8a5b8", accent: "#e8558a" },
+      { bg: ["#0c1a2a", "#040a12"], fg: "#e3f0ff", sub: "#9fc0dd", accent: "#3aa0e0" },
+    ],
+  },
+  premium: {
+    label: "Premium sombre",
+    layouts: ["classic", "centered"],
+    palettes: [
+      { bg: ["#12100a", "#040302"], fg: "#e9c86a", sub: "#c2a24e", accent: "#d4af37" },
+      { bg: ["#141210", "#050403"], fg: "#e6ddce", sub: "#b09a7e", accent: "#c9862f" },
+      { bg: ["#101012", "#050506"], fg: "#ececf0", sub: "#a8a8b4", accent: "#c0c4cc" },
+      { bg: ["#0a0f14", "#030507"], fg: "#dfeaf0", sub: "#9ab0bd", accent: "#7fd3e0" },
+    ],
+  },
+  colore: {
+    label: "Coloré",
+    layouts: ["centered", "classic"],
+    palettes: [
+      { bg: ["#ff5f6d", "#ffc371"], fg: "#3a0d12", sub: "#7a2b1f", accent: "#ffffff" },
+      { bg: ["#c471f5", "#fa71cd"], fg: "#2c0a2e", sub: "#5e2360", accent: "#ffffff" },
+      { bg: ["#43cea2", "#185a9d"], fg: "#04231d", sub: "#0d3f4a", accent: "#ffffff" },
+      { bg: ["#f7971e", "#ffd200"], fg: "#3a2600", sub: "#6b4a00", accent: "#c23a22" },
+    ],
+  },
+  vintage: {
+    label: "Vintage",
+    layouts: ["classic", "centered"],
+    palettes: [
+      { bg: "#efe3cb", fg: "#4a3a21", sub: "#7d6743", accent: "#a8552e" },
+      { bg: "#e8d9c0", fg: "#3a2c1a", sub: "#6f5a3c", accent: "#8a5a34" },
+      { bg: "#e3ddd0", fg: "#33322a", sub: "#6a6759", accent: "#5a6b4a" },
+      { bg: "#f0dfd8", fg: "#442a28", sub: "#7d5751", accent: "#b0554a" },
+    ],
+  },
+  motif: {
+    label: "Motif",
+    layouts: ["classic", "split"],
+    palettes: [
+      { bg: ["#3a2417", "#150a05"], fg: "#f5e6d8", sub: "#c9a98f", accent: "#e08a3d" },
+      { bg: ["#12291b", "#06120b"], fg: "#eafff0", sub: "#9fd8b4", accent: "#34d17e" },
+      { bg: ["#160a24", "#08020f"], fg: "#f2e6ff", sub: "#b88fe0", accent: "#c026d3" },
+      { bg: ["#08202f", "#030c14"], fg: "#ddf1ff", sub: "#8cc0dd", accent: "#2ea8e0" },
+    ],
+  },
+  gradient: {
+    label: "Gradient",
+    layouts: ["centered", "classic"],
+    palettes: [
+      { bg: ["#654ea3", "#eaafc8"], fg: "#ffffff", sub: "#f2e6f0", accent: "#ffffff" },
+      { bg: ["#0f2027", "#2c5364"], fg: "#eafcff", sub: "#a8ccd6", accent: "#4fd1e0" },
+      { bg: ["#232526", "#414345"], fg: "#f0f0f2", sub: "#b6b8bb", accent: "#e8503d" },
+      { bg: ["#ee9ca7", "#ffdde1"], fg: "#4a1f28", sub: "#8a4f5a", accent: "#c2415f" },
+    ],
+  },
+};
+
+const FAMILY_ORDER = Object.keys(FAMILY_DEFS) as StyleFamily[];
+
+export const familySpecs: TemplateSpec[] = THEMES.flatMap((theme, ti) =>
+  FAMILY_ORDER.flatMap((family) => {
+    const def = FAMILY_DEFS[family];
+    return def.layouts.map((layout, li) => {
+      const pal = def.palettes[(ti + li) % def.palettes.length];
+      const bi = (ti + li) % theme.businesses.length;
+      const loyalty: LoyaltyKind = (ti + li) % 3 === 2 ? "points" : "tampons";
+      const goal = loyalty === "tampons" ? GOALS_T[(ti + li) % GOALS_T.length] : GOALS_P[(ti + li) % GOALS_P.length];
+      const filled = Math.round(goal * (0.3 + 0.1 * ((ti + li) % 4)));
+      return {
+        id: `fam-${family}-${slug(theme.sector)}-${layout}-${li}`,
+        name: `${def.label} · ${theme.businesses[bi].split(" ")[0]}`,
+        business: theme.businesses[bi],
+        tagline: theme.taglines[(ti + li) % theme.taglines.length],
+        sector: theme.sector,
+        loyalty,
+        goal,
+        filled,
+        reward: loyalty === "tampons"
+          ? theme.rewardsT[(ti + li) % theme.rewardsT.length]
+          : theme.rewardsP[(ti + li) % theme.rewardsP.length],
+        icon: theme.icons[bi % theme.icons.length],
+        bg: pal.bg,
+        fg: pal.fg,
+        sub: pal.sub,
+        accent: pal.accent,
+        layout,
+        family,
+      } satisfies TemplateSpec;
+    });
+  }),
+);
 
 export const generatedSpecs: TemplateSpec[] = THEMES.flatMap((theme) =>
   theme.palettes.flatMap((palette, pi) =>

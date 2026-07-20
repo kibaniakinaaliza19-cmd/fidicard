@@ -9,7 +9,6 @@ export type DrawerId =
   | "tampons"
   | "texte"
   | "images"
-  | "icones"
   | "formes"
   | "qrcode"
   | "codebarres"

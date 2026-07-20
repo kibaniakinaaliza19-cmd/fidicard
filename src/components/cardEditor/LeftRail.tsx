@@ -6,7 +6,6 @@ import {
   CircleDot,
   Type,
   ImagePlus,
-  Smile,
   Shapes,
   QrCode,
   Barcode,
@@ -20,19 +19,18 @@ import TemplatesDrawer from "./drawers/TemplatesDrawer";
 import TamponsDrawer from "./drawers/TamponsDrawer";
 import TextDrawer from "./drawers/TextDrawer";
 import UploadDrawer from "./drawers/UploadDrawer";
-import IconsDrawer from "./drawers/IconsDrawer";
 import ShapesDrawer from "./drawers/ShapesDrawer";
 import CodesDrawer from "./drawers/CodesDrawer";
 import ColorsDrawer from "./drawers/ColorsDrawer";
 import BackgroundDrawer from "./drawers/BackgroundDrawer";
 
+// « Icônes » a fusionné dans « Tampons » : un tampon est une icône.
 const rail: { id: DrawerId; label: string; icon: typeof Type }[] = [
   { id: "fidelite", label: "Fidélité", icon: Trophy },
   { id: "modeles", label: "Modèles", icon: LayoutTemplate },
   { id: "tampons", label: "Tampons", icon: CircleDot },
   { id: "texte", label: "Texte", icon: Type },
   { id: "images", label: "Images", icon: ImagePlus },
-  { id: "icones", label: "Icônes", icon: Smile },
   { id: "formes", label: "Formes", icon: Shapes },
   { id: "qrcode", label: "QR Code", icon: QrCode },
   { id: "codebarres", label: "Code-barres", icon: Barcode },
@@ -76,7 +74,6 @@ export default function LeftRail() {
       {activeDrawer === "tampons" && <TamponsDrawer />}
       {activeDrawer === "texte" && <TextDrawer />}
       {activeDrawer === "images" && <UploadDrawer title="Images" />}
-      {activeDrawer === "icones" && <IconsDrawer />}
       {activeDrawer === "formes" && <ShapesDrawer />}
       {activeDrawer === "qrcode" && <CodesDrawer mode="qr" />}
       {activeDrawer === "codebarres" && <CodesDrawer mode="barcode" />}

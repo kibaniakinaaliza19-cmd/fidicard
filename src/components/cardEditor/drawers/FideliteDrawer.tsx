@@ -1,6 +1,7 @@
 "use client";
 
-import { Trophy, Plus, X, AlertTriangle, Check, Wand2, RefreshCw } from "lucide-react";
+import { useEffect } from "react";
+import { Trophy, Plus, X, AlertTriangle, Check, Wand2, RefreshCw, Info } from "lucide-react";
 import DrawerShell from "./DrawerShell";
 import { useCardStore } from "@/store/cardStore";
 import { useUIStore } from "@/store/uiStore";
@@ -9,6 +10,8 @@ import { usePublishStore } from "@/store/publishStore";
 import {
   PROGRAM_PRESETS,
   validerProgramme,
+  describeProgram,
+  pointsToEuros,
   type LoyaltyMode,
   type Palier,
   type TierType,
@@ -29,7 +32,11 @@ export default function FideliteDrawer() {
   const config = useLoyaltyStore((s) => s.config);
   const setConfig = useLoyaltyStore((s) => s.setConfig);
   const setPaliers = useLoyaltyStore((s) => s.setPaliers);
+  const setTotalStamps = useLoyaltyStore((s) => s.setTotalStamps);
+  const setMode = useLoyaltyStore((s) => s.setMode);
   const applyPreset = useLoyaltyStore((s) => s.applyPreset);
+  const lastCascade = useLoyaltyStore((s) => s.lastCascade);
+  const clearCascade = useLoyaltyStore((s) => s.clearCascade);
   const replaceLayers = useCardStore((s) => s.replaceLayers);
   const cardStamps = useCardStore((s) => getStampLayers(s.card.layers).length);
   const pushToast = useUIStore((s) => s.pushToast);
@@ -37,6 +44,15 @@ export default function FideliteDrawer() {
 
   const errors = validerProgramme(config);
   const isStamps = config.mode === "stamps";
+  const summary = describeProgram(config);
+
+  // les cascades (palier retiré, conversion) sont signalées en toast
+  useEffect(() => {
+    if (lastCascade) {
+      pushToast(lastCascade);
+      clearCascade();
+    }
+  }, [lastCascade, pushToast, clearCascade]);
 
   function patchPalier(i: number, patch: Partial<Palier>) {
     setPaliers(config.paliers.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
@@ -71,7 +87,7 @@ export default function FideliteDrawer() {
           ).map(([mode, label]) => (
             <button
               key={mode}
-              onClick={() => setConfig({ mode })}
+              onClick={() => setMode(mode)}
               className="flex-1 cursor-pointer rounded-lg border py-2.5 text-xs font-semibold transition-colors"
               style={{
                 borderColor: config.mode === mode ? "var(--accent-1)" : "var(--border)",
@@ -92,7 +108,7 @@ export default function FideliteDrawer() {
               {STAMP_COUNTS.map((n) => (
                 <button
                   key={n}
-                  onClick={() => setConfig({ totalStamps: n })}
+                  onClick={() => setTotalStamps(n)}
                   className="cursor-pointer rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors"
                   style={{
                     borderColor: config.totalStamps === n ? "var(--accent-1)" : "var(--border)",
@@ -108,7 +124,7 @@ export default function FideliteDrawer() {
                 min={1}
                 max={24}
                 value={config.totalStamps}
-                onChange={(e) => setConfig({ totalStamps: Math.max(1, Math.min(24, Number(e.target.value) || 1)) })}
+                onChange={(e) => setTotalStamps(Math.max(1, Math.min(24, Number(e.target.value) || 1)))}
                 className="w-16 rounded-lg border bg-transparent px-2 py-1.5 text-center text-xs outline-none focus:border-[var(--accent-1)]"
                 style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
               />
@@ -247,6 +263,11 @@ export default function FideliteDrawer() {
                   className="mt-2 w-full rounded-lg border bg-transparent px-2.5 py-1.5 text-[11px] outline-none focus:border-[var(--accent-1)]"
                   style={{ borderColor: "var(--border)", color: "var(--text-dim)" }}
                 />
+                {!isStamps && (
+                  <p className="mt-1.5 text-[11px]" style={{ color: "var(--text-faint)" }}>
+                    {p.position} points ≈ {pointsToEuros(p.position, config.tauxConversion)} € dépensés
+                  </p>
+                )}
               </div>
             ))}
           <button
@@ -298,13 +319,31 @@ export default function FideliteDrawer() {
         )}
       </Section>
 
+      {/* résumé en langage naturel, régénéré à chaque modification */}
+      <div
+        className="mb-5 flex items-start gap-2 rounded-xl border px-3.5 py-3"
+        style={{ borderColor: "var(--accent-1)", background: "var(--accent-glow)" }}
+      >
+        <Info size={14} className="mt-0.5 shrink-0 text-[var(--accent-1)]" />
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--accent-1)" }}>
+            Votre programme, en clair
+          </p>
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text)" }}>
+            {summary}
+          </p>
+        </div>
+      </div>
+
       {/* presets */}
-      <Section label="Programmes prêts à l'emploi" hint="Mécanismes éprouvés du commerce de proximité — un clic remplit tout, modifiable ensuite.">
+      <Section label="Programmes prêts à l'emploi" hint="Mécanismes éprouvés du commerce de proximité — un clic remplit tout et recalcule les paliers, modifiable ensuite.">
         <div className="space-y-2">
           {PROGRAM_PRESETS.map((preset) => (
             <button
               key={preset.id}
               onClick={() => {
+                const hasCustom = config.paliers.length > 0;
+                if (hasCustom && !window.confirm("Appliquer ce programme remplacera vos paliers actuels. Continuer ?")) return;
                 applyPreset(preset);
                 const cfg = { ...config, ...preset.config };
                 syncToCard(cfg);

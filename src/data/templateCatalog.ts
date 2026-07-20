@@ -6,7 +6,7 @@ import {
   makeId,
 } from "@/lib/layerFactory";
 import { cardTemplates } from "@/data/cardTemplates";
-import { generatedSpecs } from "@/data/templateFactory";
+import { generatedSpecs, familySpecs } from "@/data/templateFactory";
 
 /* -------------------------------------------------------------------------- */
 /*  Declarative template catalog                                              */
@@ -20,6 +20,22 @@ import { generatedSpecs } from "@/data/templateFactory";
 export type LoyaltyKind = "tampons" | "points";
 export type TemplateTag = "populaire" | "nouveau";
 export type TemplateLayout = "classic" | "centered" | "split" | "banner";
+// 8 familles stylistiques — chacune a sa propre logique de composition, pas
+// juste une variation de couleur.
+export type StyleFamily =
+  | "bancaire" | "photo" | "minimal" | "premium"
+  | "colore" | "vintage" | "motif" | "gradient";
+
+export const STYLE_FAMILIES: { id: StyleFamily; label: string }[] = [
+  { id: "minimal", label: "Minimaliste" },
+  { id: "bancaire", label: "Bancaire" },
+  { id: "photo", label: "Photo" },
+  { id: "premium", label: "Premium sombre" },
+  { id: "colore", label: "Coloré" },
+  { id: "vintage", label: "Vintage" },
+  { id: "motif", label: "Motif" },
+  { id: "gradient", label: "Gradient" },
+];
 
 export interface TemplateSpec {
   id: string;
@@ -37,6 +53,7 @@ export interface TemplateSpec {
   sub: string; // subtitle / reward colour
   accent: string; // stamp & progress colour
   layout?: TemplateLayout; // composition — defaults to "classic"
+  family?: StyleFamily; // traitement visuel du fond
   tags?: TemplateTag[];
 }
 
@@ -44,6 +61,7 @@ export interface TemplateEntry {
   id: string;
   name: string;
   sector: string;
+  family?: StyleFamily;
   tags?: TemplateTag[];
   build: () => CardDoc;
 }
@@ -75,6 +93,52 @@ function background(bg: [string, string] | string): CardBackground {
     image: null,
     imageDim: 30,
   };
+}
+
+/** Fond selon la famille stylistique — chaque famille a un traitement distinct. */
+function familyBackground(spec: TemplateSpec): CardBackground {
+  const base = background(spec.bg);
+  const solid = Array.isArray(spec.bg) ? spec.bg[0] : spec.bg;
+  switch (spec.family) {
+    case "minimal":
+      // fond uni clair/sombre, sans fioriture
+      return { ...base, kind: "color", color: solid, gradientFrom: solid, gradientTo: solid };
+    case "bancaire":
+      // aplat profond façon carte de crédit (dégradé très resserré, vertical)
+      return {
+        ...base,
+        kind: "gradient",
+        gradientFrom: Array.isArray(spec.bg) ? spec.bg[0] : spec.bg,
+        gradientTo: Array.isArray(spec.bg) ? spec.bg[1] : solid,
+        gradientAngle: 100,
+      };
+    case "premium":
+      return { ...base, kind: "gradient", gradientAngle: 150 };
+    case "gradient":
+      return { ...base, kind: "gradient", gradientAngle: 120 };
+    case "colore":
+      return { ...base, kind: "gradient", gradientAngle: 60 };
+    case "vintage":
+      // aplat crème + fine trame diagonale
+      return { ...base, kind: "pattern", color: solid, pattern: "diagonal", patternColor: spec.sub };
+    case "motif":
+      // motif métier en très basse opacité
+      return { ...base, kind: "pattern", color: solid, pattern: "dots", patternColor: spec.accent };
+    case "photo":
+      // pas de photo réelle livrable : dégradé profond + voile pour suggérer
+      // une image plein cadre lisible (le commerçant importe sa vraie photo
+      // via le menu Fond)
+      return {
+        ...base,
+        kind: "gradient",
+        gradientFrom: Array.isArray(spec.bg) ? spec.bg[0] : spec.bg,
+        gradientTo: Array.isArray(spec.bg) ? spec.bg[1] : "#05070d",
+        gradientAngle: 165,
+        imageDim: 45,
+      };
+    default:
+      return base;
+  }
 }
 
 /* ---- stamp grid (wraps to 2 rows past 6 stamps) ---- */
@@ -321,7 +385,7 @@ export function buildFromSpec(spec: TemplateSpec): CardDoc {
     id: makeId("tpl"),
     name: spec.name,
     category: spec.sector,
-    background: background(spec.bg),
+    background: familyBackground(spec),
     layers,
     published: false,
     updatedAt: Date.now(),
@@ -437,10 +501,11 @@ function sectorRank(sector: string) {
 
 /* ---- unified catalog (curated specs + generated matrix + legacy) ---- */
 
-const specEntries: TemplateEntry[] = [...specs, ...generatedSpecs].map((s) => ({
+const specEntries: TemplateEntry[] = [...specs, ...familySpecs, ...generatedSpecs].map((s) => ({
   id: s.id,
   name: s.name,
   sector: s.sector,
+  family: s.family,
   tags: s.tags,
   build: () => buildFromSpec(s),
 }));
@@ -461,3 +526,8 @@ export const templateSectors: string[] = Array.from(
 ).sort((a, b) => sectorRank(a) - sectorRank(b));
 
 export const templateCount = templateCatalog.length;
+
+/** familles réellement présentes dans le catalogue, dans l'ordre canonique */
+export const templateFamilies = STYLE_FAMILIES.filter((f) =>
+  templateCatalog.some((t) => t.family === f.id),
+);

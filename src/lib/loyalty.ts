@@ -232,6 +232,97 @@ export function validerProgramme(config: LoyaltyConfig): string[] {
   return errs;
 }
 
+/* ------------------------------------------- réactivité en cascade */
+
+/** repositionne les paliers proportionnellement quand le total change ;
+ *  retourne aussi les libellés des paliers retirés (au-delà du nouveau total) */
+export function rescalePaliers(
+  paliers: Palier[],
+  oldTotal: number,
+  newTotal: number,
+): { paliers: Palier[]; dropped: Palier[] } {
+  if (oldTotal === newTotal || oldTotal <= 0) return { paliers, dropped: [] };
+  const kept: Palier[] = [];
+  const dropped: Palier[] = [];
+  const seen = new Set<number>();
+  for (const p of [...paliers].sort(byPosition)) {
+    let pos = Math.round((p.position / oldTotal) * newTotal);
+    pos = Math.max(1, Math.min(newTotal, pos));
+    while (seen.has(pos) && pos < newTotal) pos++;
+    if (seen.has(pos)) { dropped.push(p); continue; }
+    seen.add(pos);
+    kept.push({ ...p, position: pos });
+  }
+  return { paliers: kept, dropped };
+}
+
+/** convertit les paliers entre tampons (positions) et points (seuils).
+ *  stamps→points : position × (points d'une carte complète / total).
+ *  points→stamps : seuil ramené sur l'échelle des tampons. */
+export function convertPaliersMode(
+  paliers: Palier[],
+  from: LoyaltyMode,
+  to: LoyaltyMode,
+  totalStamps: number,
+  tauxConversion: number,
+  pointsCap = 500,
+): Palier[] {
+  if (from === to) return paliers;
+  if (from === "stamps" && to === "points") {
+    // une carte complète ≈ pointsCap points ; chaque tampon vaut donc pointsCap/total
+    const per = Math.max(1, Math.round(pointsCap / Math.max(1, totalStamps)));
+    return paliers.map((p) => ({ ...p, position: p.position * per }));
+  }
+  // points → stamps : on répartit les seuils sur [1..total]
+  const max = Math.max(...paliers.map((p) => p.position), 1);
+  const seen = new Set<number>();
+  const out: Palier[] = [];
+  for (const p of [...paliers].sort(byPosition)) {
+    let pos = Math.max(1, Math.min(totalStamps, Math.round((p.position / max) * totalStamps)));
+    while (seen.has(pos) && pos < totalStamps) pos++;
+    if (seen.has(pos)) continue;
+    seen.add(pos);
+    out.push({ ...p, position: pos });
+  }
+  return out;
+}
+
+/** points ↔ euros dépensés, pour la lisibilité côté client */
+export function pointsToEuros(points: number, tauxConversion: number): number {
+  return tauxConversion > 0 ? Math.round(points / tauxConversion) : 0;
+}
+
+/** Résumé du programme en langage naturel — régénéré à chaque modification. */
+export function describeProgram(config: LoyaltyConfig): string {
+  const tiers = [...config.paliers].sort(byPosition);
+  if (config.mode === "stamps") {
+    const gain =
+      config.regle.type === "passage"
+        ? "1 tampon par passage"
+        : config.regle.type === "montant_minimum"
+          ? `1 tampon dès ${config.regle.seuil} € d'achat`
+          : `1 tampon par tranche de ${config.regle.tranche} €`;
+    if (tiers.length === 0) return `Vos clients gagnent ${gain}. Aucune récompense définie pour l'instant.`;
+    const parts = tiers.map((t, i) => {
+      const last = i === tiers.length - 1;
+      return `${last ? "Au " : "au "}${t.position}ᵉ : ${t.description || t.label}`;
+    });
+    const complete = tiers.some((t) => t.position === config.totalStamps)
+      ? " puis la carte redémarre."
+      : ".";
+    return `Vos clients gagnent ${gain}. ${capitalize(parts.join(", "))}${complete}`;
+  }
+  const parts = tiers.map(
+    (t) => `à ${t.position} points (≈ ${pointsToEuros(t.position, config.tauxConversion)} € dépensés) : ${t.description || t.label}`,
+  );
+  if (tiers.length === 0) return `Vos clients gagnent ${config.tauxConversion} points par euro dépensé. Aucun palier défini.`;
+  return `Vos clients gagnent ${config.tauxConversion} points par euro dépensé. Récompenses : ${parts.join(", ")}.`;
+}
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /* ------------------------------------------------- aide à l'import (IA) */
 
 /** « -5€ » → montant ; « -15% » → pourcentage ; « offert » → produit_offert */
