@@ -84,14 +84,53 @@ export interface CardBackground {
   imageDim: number;
 }
 
+/* ------------------------------------------------------------------ zones */
+// v2 : la partie fonctionnelle de la carte n'est plus stockée en calques
+// concrets mais déclarée en « zones ». Leurs calques sont produits à chaque
+// affichage par lib/loyalty/renderLayer.ts à partir de la config de fidélité
+// (et de l'état du client) — jamais persistés.
+
+export type StampShape = "cercle" | "arrondi" | "carre";
+
+export interface ZoneFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface StampGridZone {
+  id: string;
+  kind: "stampGrid";
+  /** boîte englobante en % du canvas — la zone se manipule comme UN objet */
+  frame: ZoneFrame;
+  /** largeur d'un tampon en % (hauteur dérivée du ratio carte) */
+  size: number;
+  shape: StampShape;
+  /** tampons par rangée ; "auto" = 1 rangée jusqu'à 6, sinon 2 */
+  perRow: number | "auto";
+  /** écrire les libellés de paliers DANS leurs tampons */
+  showTierLabels: boolean;
+}
+
+export type Zone = StampGridZone;
+
 export interface CardDoc {
   id: string;
   name: string;
   category: string;
   background: CardBackground;
+  /** calques de design ; en v2 ils n'incluent plus la grille de tampons */
   layers: Layer[];
   published: boolean;
   updatedAt: number;
+  /** absent ou 1 = document historique tout-en-calques */
+  version?: 1 | 2;
+  zones?: Zone[];
+  /** copie intégrale du document d'avant migration v1→v2 (rollback) */
+  design_json_v1?: CardDocV1;
 }
+
+export type CardDocV1 = Omit<CardDoc, "version" | "zones" | "design_json_v1">;
 
 export const CARD_RATIO = 85.6 / 53.98;

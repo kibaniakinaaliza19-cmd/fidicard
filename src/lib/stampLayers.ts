@@ -4,14 +4,14 @@
 // Ces helpers savent les retrouver, les régénérer et les resynchroniser sans
 // toucher au reste du design.
 
-import type { Layer, ShapeLayer } from "@/types/layer";
+import type { Layer, ShapeLayer, StampShape } from "@/types/layer";
 import { createShapeLayer, createTextLayer, makeId } from "@/lib/layerFactory";
 import type { LoyaltyConfig } from "@/lib/loyalty";
 
 const STAMP_RE = /^Tampon (\d+)$/;
 const TIER_RE = /^Palier /;
 
-export type StampShape = "cercle" | "arrondi" | "carre";
+export type { StampShape } from "@/types/layer";
 
 export function getStampLayers(layers: Layer[]): ShapeLayer[] {
   return layers
