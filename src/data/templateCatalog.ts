@@ -1,4 +1,4 @@
-import type { CardDoc, CardBackground, Layer } from "@/types/layer";
+import type { CardDoc, CardBackground, Layer, StampGridZone, Zone } from "@/types/layer";
 import {
   createTextLayer,
   createShapeLayer,
@@ -141,7 +141,11 @@ function familyBackground(spec: TemplateSpec): CardBackground {
   }
 }
 
-/* ---- stamp grid (wraps to 2 rows past 6 stamps) ---- */
+/* ---- stamp grid → ZONE (couche fonctionnelle, chantier 2) ----
+   Le modèle ne matérialise plus la grille en calques : il déclare une
+   StampGridZone. Sa géométrie reproduit exactement l'ancienne grille (pas 14,
+   hauteur 14, 1 ou 2 rangées) pour que la vignette reste identique au pixel,
+   et son `previewTotal` fait afficher à chaque modèle son propre compteur. */
 
 interface StampArea {
   x: number;
@@ -151,16 +155,15 @@ interface StampArea {
   y?: number;
 }
 
-function stampGrid(
-  z: () => number,
+function stampZone(
   goal: number,
   filled: number,
   iconName: string,
   accent: string,
   area: StampArea = { x: 8, w: 84 },
-): Layer[] {
-  const layers: Layer[] = [];
+): StampGridZone {
   const size = 9;
+  const stampHeight = 14;
   const shown = Math.min(goal, 10);
   const perRow = shown <= 6 ? shown : Math.ceil(shown / 2);
   const rows = Math.ceil(shown / perRow);
@@ -169,37 +172,22 @@ function stampGrid(
   const startX = area.center ? area.x + (area.w - rowWidth) / 2 : area.x;
   const startY = area.y ?? (rows === 1 ? 52 : 46);
   const rowGap = 16;
-
-  for (let i = 0; i < shown; i++) {
-    const r = Math.floor(i / perRow);
-    const c = i % perRow;
-    const x = startX + c * gap;
-    const y = startY + r * rowGap;
-    const on = i < filled;
-    layers.push(
-      createShapeLayer(z(), "circle", {
-        id: makeId("stamp-bg"),
-        name: `Tampon ${i + 1}`,
-        x,
-        y,
-        width: size,
-        height: 14,
-        fill: on ? accent : "rgba(255,255,255,0.12)",
-      }),
-    );
-    layers.push(
-      createIconLayer(z(), iconName, {
-        id: makeId("stamp-ic"),
-        name: `Icône ${i + 1}`,
-        x: x + 1.8,
-        y: y + 2.6,
-        width: 5.4,
-        height: 8.8,
-        color: on ? "#ffffff" : "rgba(255,255,255,0.4)",
-      }),
-    );
-  }
-  return layers;
+  return {
+    id: makeId("zone"),
+    kind: "stampGrid",
+    frame: { x: startX, y: startY, w: rowWidth, h: (rows - 1) * rowGap + stampHeight },
+    size,
+    stampHeight,
+    shape: "cercle",
+    perRow: "auto",
+    showTierLabels: true,
+    icon: iconName,
+    iconColor: "rgba(255,255,255,0.4)",
+    iconBox: { dx: 1.8, dy: 2.6, w: 5.4, h: 8.8 },
+    previewFilled: filled,
+    previewTotal: shown,
+    styleOverride: { empty: "rgba(255,255,255,0.12)", border: "transparent", filled: accent },
+  };
 }
 
 /* ---- generic builder (4 compositions) ---- */
@@ -333,15 +321,17 @@ export function buildFromSpec(spec: TemplateSpec): CardDoc {
   }
 
   /* — loyalty visual — */
+  let zones: Zone[] | undefined;
   if (spec.loyalty === "tampons") {
-    layers.push(
-      ...stampGrid(z, spec.goal, spec.filled, spec.icon, spec.accent, {
+    // la grille devient une zone (couche fonctionnelle) — pas des calques
+    zones = [
+      stampZone(spec.goal, spec.filled, spec.icon, spec.accent, {
         x: contentX,
         w: contentW,
         center: centered || layout === "split" || layout === "banner",
         y: layout === "banner" ? (Math.min(spec.goal, 10) <= 6 ? 56 : 48) : undefined,
       }),
-    );
+    ];
   } else {
     const barY = layout === "banner" ? 56 : 54;
     layers.push(
@@ -389,6 +379,8 @@ export function buildFromSpec(spec: TemplateSpec): CardDoc {
     layers,
     published: false,
     updatedAt: Date.now(),
+    version: 2,
+    zones,
   };
 }
 

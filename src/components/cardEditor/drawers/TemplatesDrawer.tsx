@@ -183,7 +183,7 @@ export default function TemplatesDrawer() {
                           {TAG_STYLE[t.tags[0]].label}
                         </span>
                       )}
-                      <MiniCard doc={docFor(t)} width={248} />
+                      <MiniCard doc={docFor(t)} width={248} preview />
                       <div className="px-2.5 py-1.5 text-left" style={{ background: "var(--panel-soft)" }}>
                         <p className="text-xs font-medium" style={{ color: "var(--text)" }}>{t.name}</p>
                         <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>{t.sector}</p>

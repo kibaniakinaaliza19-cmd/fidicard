@@ -1,11 +1,15 @@
 import type { CardDoc } from "@/types/layer";
 import { createTextLayer, makeId } from "@/lib/layerFactory";
+import { createDefaultStampGridZone } from "@/lib/loyalty/renderLayer";
 
 export function createBlankCard(): CardDoc {
   return {
     id: makeId("card"),
     name: "Ma carte de fidélité",
     category: "autres",
+    version: 2,
+    // couche fonctionnelle par défaut : la grille suit la config de fidélité
+    zones: [createDefaultStampGridZone(makeId("zone"), 10)],
     background: {
       kind: "gradient",
       color: "#0f0603",

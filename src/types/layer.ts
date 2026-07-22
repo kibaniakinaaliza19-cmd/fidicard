@@ -121,6 +121,8 @@ export interface StampGridZone {
   iconBox?: { dx: number; dy: number; w: number; h: number };
   /** remplissage de démonstration dans l'éditeur — jamais l'état d'un client */
   previewFilled?: number;
+  /** compteur de démonstration pour la vignette de galerie (jamais le live) */
+  previewTotal?: number;
   /** couleurs héritées d'un document migré — priorité sur config.stampStyle */
   styleOverride?: { empty?: string; border?: string; filled?: string };
 }

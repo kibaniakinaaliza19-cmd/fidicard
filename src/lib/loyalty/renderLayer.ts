@@ -21,7 +21,7 @@ import type {
   TextLayer,
   Zone,
 } from "@/types/layer";
-import type { LoyaltyConfig } from "@/lib/loyalty";
+import { DEFAULT_LOYALTY_CONFIG, type LoyaltyConfig } from "@/lib/loyalty";
 
 /** hauteur d'un tampon (en % de la hauteur carte) pour une largeur donnée */
 export const STAMP_HEIGHT_RATIO = 1.55;
@@ -202,6 +202,30 @@ export function renderZones(
   let zBase = opts.zBase ?? 1000;
   for (const zone of zones) {
     const layers = renderLoyaltyLayer(zone, config, { ...opts, zBase });
+    zBase += layers.length;
+    out.push(...layers);
+  }
+  return out;
+}
+
+/**
+ * Rendu de VIGNETTE (galerie de modèles) : chaque zone se dessine à SON propre
+ * compteur de démonstration (previewTotal) et avec ses couleurs, sans dépendre
+ * de la config de fidélité du commerçant. Deux modèles voisins gardent ainsi
+ * des grilles distinctes dans la galerie.
+ */
+export function renderZonesPreview(zones: Zone[] | undefined, opts: RenderOptions = {}): Layer[] {
+  if (!zones || zones.length === 0) return [];
+  const out: Layer[] = [];
+  let zBase = opts.zBase ?? 1000;
+  for (const zone of zones) {
+    const total = zone.kind === "stampGrid" ? zone.previewTotal : undefined;
+    const config: LoyaltyConfig = {
+      ...DEFAULT_LOYALTY_CONFIG,
+      totalStamps: total ?? DEFAULT_LOYALTY_CONFIG.totalStamps,
+      paliers: [],
+    };
+    const layers = renderLoyaltyLayer(zone, config, { zBase });
     zBase += layers.length;
     out.push(...layers);
   }
