@@ -1,5 +1,5 @@
-import CardEditor from "@/components/cardEditor/CardEditor";
+import AiDesigner from "@/components/aiDesigner/AiDesigner";
 
 export default function CartePage() {
-  return <CardEditor />;
+  return <AiDesigner />;
 }

@@ -64,6 +64,8 @@ export interface TemplateEntry {
   family?: StyleFamily;
   tags?: TemplateTag[];
   build: () => CardDoc;
+  /** essentiel du programme de fidélité porté par le modèle (Designer IA) */
+  loyalty?: { mode: LoyaltyKind; total: number; reward: string; icon: string };
 }
 
 /* ---- background helpers ---- */
@@ -500,6 +502,7 @@ const specEntries: TemplateEntry[] = [...specs, ...familySpecs, ...generatedSpec
   family: s.family,
   tags: s.tags,
   build: () => buildFromSpec(s),
+  loyalty: { mode: s.loyalty, total: s.goal, reward: s.reward, icon: s.icon },
 }));
 
 const legacyEntries: TemplateEntry[] = cardTemplates.map((t) => ({

@@ -12,7 +12,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
   const pathname = usePathname();
-  const fullBleed = pathname?.startsWith("/carte");
+  // seul l'éditeur avancé est plein écran ; le Designer IA garde la sidebar
+  const fullBleed = pathname?.startsWith("/carte/editeur");
   const publicPage = pathname?.startsWith("/join");
 
   useEffect(() => {
