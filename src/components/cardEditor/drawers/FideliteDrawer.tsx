@@ -39,8 +39,11 @@ export default function FideliteDrawer() {
   const clearCascade = useLoyaltyStore((s) => s.clearCascade);
   const replaceLayers = useCardStore((s) => s.replaceLayers);
   const cardStamps = useCardStore((s) => getStampLayers(s.card.layers).length);
-  // v2 : la carte rend sa grille depuis la config — aucune synchro manuelle
-  const isZoneCard = useCardStore((s) => s.card.version === 2);
+  // carte à zone : la grille se rend depuis la config, aucune synchro manuelle.
+  // Après « Détacher la grille » il n'y a plus de zone → on repasse en mode calques.
+  const isZoneCard = useCardStore(
+    (s) => s.card.version === 2 && (s.card.zones?.some((z) => z.kind === "stampGrid") ?? false),
+  );
   const pushToast = useUIStore((s) => s.pushToast);
   const published = usePublishStore((s) => s.published);
 

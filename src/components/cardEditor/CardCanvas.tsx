@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCardStore } from "@/store/cardStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { renderZones } from "@/lib/loyalty/renderLayer";
-import type { Layer, TextLayer } from "@/types/layer";
+import type { Layer, TextLayer, Zone } from "@/types/layer";
 import { CARD_RATIO } from "@/types/layer";
 import { backgroundToCss } from "@/lib/backgroundStyle";
 import LayerContent from "@/components/cardEditor/LayerContent";
@@ -39,6 +39,9 @@ export default function CardCanvas() {
   const selectLayer = useCardStore((s) => s.selectLayer);
   const selectMany = useCardStore((s) => s.selectMany);
   const clearSelection = useCardStore((s) => s.clearSelection);
+  const selectedZoneId = useCardStore((s) => s.selectedZoneId);
+  const selectZone = useCardStore((s) => s.selectZone);
+  const updateZoneLive = useCardStore((s) => s.updateZoneLive);
   const updateLayersLive = useCardStore((s) => s.updateLayersLive);
   const updateLayerLive = useCardStore((s) => s.updateLayerLive);
   const commit = useCardStore((s) => s.commit);
@@ -283,6 +286,20 @@ export default function CardCanvas() {
             );
           })}
 
+          {/* zones fonctionnelles (v2) : bloc unique, déplaçable/redimensionnable */}
+          {card.version === 2 &&
+            card.zones?.map((zone) => (
+              <ZoneBox
+                key={zone.id}
+                zone={zone}
+                cardRef={cardRef}
+                selected={selectedZoneId === zone.id}
+                onSelect={() => selectZone(zone.id)}
+                updateLive={updateZoneLive}
+                commit={commit}
+              />
+            ))}
+
           {/* FidiCard fixed watermark (imposed, non-editable) */}
           <div
             className="pointer-events-none absolute left-[4%] top-[7%] z-[999] flex items-center gap-1"
@@ -363,6 +380,104 @@ function SelectionOverlay({
         style={{ top: "-22px", borderColor: "var(--accent-1)", cursor: "grab" }}
       />
       <div className="absolute left-1/2 top-0 h-[22px] w-px -translate-x-1/2 -translate-y-full" style={{ background: "var(--accent-1)" }} />
+    </div>
+  );
+}
+
+const clampN = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+// La zone de fidélité se manipule comme UN objet : on déplace/redimensionne le
+// conteneur (frame), jamais les tampons individuels — ceux-ci sont rendus par
+// le moteur. « Détacher la grille » (panneau Calques) reste la porte de sortie.
+function ZoneBox({
+  zone,
+  cardRef,
+  selected,
+  onSelect,
+  updateLive,
+  commit,
+}: {
+  zone: Zone;
+  cardRef: React.RefObject<HTMLDivElement | null>;
+  selected: boolean;
+  onSelect: () => void;
+  updateLive: (id: string, patch: Partial<Zone>) => void;
+  commit: () => void;
+}) {
+  const drag = useRef<{ mode: "move" | "resize"; sx: number; sy: number; frame: Zone["frame"]; rw: number; rh: number } | null>(null);
+
+  const begin = useCallback(
+    (e: React.PointerEvent, mode: "move" | "resize") => {
+      e.stopPropagation();
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      onSelect();
+      drag.current = { mode, sx: e.clientX, sy: e.clientY, frame: { ...zone.frame }, rw: rect.width, rh: rect.height };
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    },
+    [cardRef, onSelect, zone.frame],
+  );
+
+  useEffect(() => {
+    function move(e: PointerEvent) {
+      const d = drag.current;
+      if (!d) return;
+      const dx = ((e.clientX - d.sx) / d.rw) * 100;
+      const dy = ((e.clientY - d.sy) / d.rh) * 100;
+      const f = { ...d.frame };
+      if (d.mode === "move") {
+        f.x = clampN(d.frame.x + dx, 0, 100 - d.frame.w);
+        f.y = clampN(d.frame.y + dy, 0, 100 - d.frame.h);
+      } else {
+        f.w = clampN(d.frame.w + dx, 14, 100 - d.frame.x);
+        f.h = clampN(d.frame.h + dy, 8, 100 - d.frame.y);
+      }
+      updateLive(zone.id, { frame: f });
+    }
+    function up() {
+      if (drag.current) {
+        drag.current = null;
+        commit();
+      }
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [zone.id, updateLive, commit]);
+
+  return (
+    <div
+      onPointerDown={(e) => begin(e, "move")}
+      className="absolute z-[1002]"
+      style={{
+        left: `${zone.frame.x}%`,
+        top: `${zone.frame.y}%`,
+        width: `${zone.frame.w}%`,
+        height: `${zone.frame.h}%`,
+        cursor: "move",
+        outline: selected ? "1.5px dashed var(--accent-1)" : "1px dashed rgba(240,101,62,0.35)",
+        outlineOffset: 3,
+        borderRadius: 6,
+      }}
+    >
+      {selected && (
+        <>
+          <span
+            className="pointer-events-none absolute -top-6 left-0 flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold text-white"
+            style={{ background: "var(--accent-1)" }}
+          >
+            🔒 Grille de fidélité — gérée automatiquement
+          </span>
+          <div
+            onPointerDown={(e) => begin(e, "resize")}
+            className="absolute -bottom-1.5 -right-1.5 h-3 w-3 rounded-full border-2 bg-white"
+            style={{ borderColor: "var(--accent-1)", cursor: "nwse-resize" }}
+          />
+        </>
+      )}
     </div>
   );
 }

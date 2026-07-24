@@ -32,6 +32,8 @@ function nextZIndex(layers: Layer[]) {
 interface CardState {
   card: CardDoc;
   selectedIds: string[];
+  /** zone fonctionnelle sélectionnée (v2) — exclusif avec selectedIds */
+  selectedZoneId: string | null;
   clipboard: Layer[];
   history: CardDoc[];
   historyIndex: number;
@@ -45,6 +47,11 @@ interface CardState {
   selectLayer: (id: string, additive?: boolean) => void;
   selectMany: (ids: string[]) => void;
   clearSelection: () => void;
+  selectZone: (id: string | null) => void;
+  /** déplacement/redimensionnement live d'une zone (sans point d'historique) */
+  updateZoneLive: (id: string, patch: Partial<Zone>) => void;
+  /** convertit une zone en calques concrets (« Détacher la grille ») */
+  detachZone: (zoneId: string, layers: Layer[]) => void;
 
   addLayer: (layer: Layer) => void;
   /** transformation en masse des calques (grille de tampons, paliers…) — un seul point d'historique */
@@ -97,6 +104,7 @@ const initialCard = createBlankCard();
 export const useCardStore = create<CardState>((set, get) => ({
   card: initialCard,
   selectedIds: [],
+  selectedZoneId: null,
   clipboard: [],
   history: [cloneCard(initialCard)],
   historyIndex: 0,
@@ -111,12 +119,34 @@ export const useCardStore = create<CardState>((set, get) => ({
     set((state) => {
       if (additive) {
         const exists = state.selectedIds.includes(id);
-        return { selectedIds: exists ? state.selectedIds.filter((i) => i !== id) : [...state.selectedIds, id] };
+        return { selectedZoneId: null, selectedIds: exists ? state.selectedIds.filter((i) => i !== id) : [...state.selectedIds, id] };
       }
-      return { selectedIds: [id] };
+      return { selectedIds: [id], selectedZoneId: null };
     }),
-  selectMany: (ids) => set({ selectedIds: ids }),
-  clearSelection: () => set({ selectedIds: [] }),
+  selectMany: (ids) => set({ selectedIds: ids, selectedZoneId: null }),
+  clearSelection: () => set({ selectedIds: [], selectedZoneId: null }),
+  selectZone: (id) => set({ selectedZoneId: id, selectedIds: [] }),
+
+  updateZoneLive: (id, patch) =>
+    set((state) => ({
+      card: {
+        ...state.card,
+        zones: (state.card.zones ?? []).map((z) => (z.id === id ? ({ ...z, ...patch } as Zone) : z)),
+      },
+    })),
+
+  detachZone: (zoneId, layers) =>
+    set((state) => {
+      const card = cloneCard(state.card);
+      card.zones = (card.zones ?? []).filter((z) => z.id !== zoneId);
+      let z = nextZIndex(card.layers);
+      const fresh = layers.map((l) => ({ ...l, id: makeId("layer"), groupId: null, zIndex: z++ } as Layer));
+      card.layers = [...card.layers, ...fresh];
+      card.updatedAt = Date.now();
+      const truncated = state.history.slice(0, state.historyIndex + 1);
+      const next = [...truncated, cloneCard(card)].slice(-HISTORY_LIMIT);
+      return { card, selectedZoneId: null, selectedIds: [], history: next, historyIndex: next.length - 1 };
+    }),
 
   addLayer: (layer) =>
     set((state) => {
