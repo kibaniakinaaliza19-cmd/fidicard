@@ -1,18 +1,17 @@
-// Assistant FidiCard conversationnel — vrai modèle de langage, côté serveur.
-//
-// La clé API reste dans .env.local (ANTHROPIC_API_KEY) et n'est JAMAIS exposée
-// au navigateur : le client poste l'historique de conversation ici, cette route
-// interroge le modèle et renvoie { reply, action? }. Le client exécute l'action
-// sur le moteur (appliquer un modèle, régler les tampons, la récompense).
+// Assistant FidiCard conversationnel — vrai modèle OpenAI (ChatGPT), côté
+// serveur. La clé reste dans .env.local (OPENAI_API_KEY) et n'est JAMAIS
+// exposée au navigateur : le client poste l'historique, cette route interroge
+// l'API OpenAI et renvoie { reply, action? }. Le client exécute l'action sur
+// le moteur (appliquer un modèle, régler les tampons, la récompense).
 //
 // GET  → { available: boolean }  (sans clé, le client bascule sur l'assistant
 //         déterministe local — l'app fonctionne quand même).
 // POST → { reply: string, action?: AssistantAction } | { error }
 
-import Anthropic from "@anthropic-ai/sdk";
-
-// Modèle rapide adapté au dialogue ; surclassable via ANTHROPIC_ASSISTANT_MODEL.
-const MODEL = process.env.ANTHROPIC_ASSISTANT_MODEL || "claude-haiku-4-5-20251001";
+// Modèle par défaut ; surclassable via OPENAI_ASSISTANT_MODEL (ex. "gpt-5",
+// "gpt-4o", "gpt-4.1"). "gpt-4o-mini" est rapide et économique pour le chat.
+const MODEL = process.env.OPENAI_ASSISTANT_MODEL || "gpt-4o-mini";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 const SECTORS = [
   "Café", "Boulangerie", "Pâtisserie", "Restaurant", "Pizzeria", "Fast-food",
@@ -26,7 +25,7 @@ const SYSTEM = `Tu es l'Assistant FidiCard, un expert en cartes de fidélité, b
 RÈGLES DE STYLE
 - Tu parles français, chaleureux, professionnel, humain. Phrases courtes.
 - Tu poses UNE seule question à la fois. Tu conseilles avant de demander.
-- Tu ne dis JAMAIS que tu es une IA générique, ChatGPT, Claude ou OpenAI. Tu es "l'Assistant FidiCard".
+- Tu ne dis JAMAIS que tu es une IA générique, ChatGPT ou OpenAI. Tu es "l'Assistant FidiCard".
 - Tu ne parles que de : cartes de fidélité, design, tampons/points, récompenses, Wallet, marketing local. Tu recentres poliment si on s'écarte.
 
 TON RÔLE TECHNIQUE
@@ -46,17 +45,17 @@ Sinon : "action": null.
 
 Secteurs valides : ${SECTORS.join(", ")}.
 
-Au premier message, souhaite la bienvenue et demande l'activité. Dès que tu as l'activité, propose une ambiance puis déclenche "propose". Après application, propose des ajustements (nombre de tampons, récompense, couleurs).`;
+Au premier message, souhaite la bienvenue et demande l'activité. Dès que tu as l'activité, propose une ambiance puis déclenche "propose". Après application, propose des ajustements (nombre de tampons, récompense).`;
 
 interface InMsg { role: "user" | "assistant"; content: string }
 
 export function GET() {
-  return Response.json({ available: Boolean(process.env.ANTHROPIC_API_KEY), model: process.env.ANTHROPIC_API_KEY ? MODEL : null });
+  return Response.json({ available: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_API_KEY ? MODEL : null });
 }
 
 export async function POST(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "Assistant IA non configuré (ANTHROPIC_API_KEY absente)." }, { status: 503 });
+  if (!process.env.OPENAI_API_KEY) {
+    return Response.json({ error: "Assistant IA non configuré (OPENAI_API_KEY absente)." }, { status: 503 });
   }
 
   let messages: InMsg[];
@@ -73,32 +72,35 @@ export async function POST(req: Request) {
     return Response.json({ error: "Requête invalide." }, { status: 400 });
   }
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 20_000, maxRetries: 1 });
-
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 600,
-      system: SYSTEM,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    });
-    if (response.stop_reason === "refusal") {
-      return Response.json({ reply: "Je préfère rester sur la création de votre carte 🙂", action: null });
-    }
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    const res = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 600,
+        temperature: 0.6,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: SYSTEM }, ...messages],
+      }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+
+    if (res.status === 401) return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });
+    if (res.status === 429) return Response.json({ error: "Quota OpenAI atteint — réessayez dans un instant." }, { status: 429 });
+    if (!res.ok) return Response.json({ error: `Erreur du service (${res.status}).` }, { status: 502 });
+
+    const data = await res.json();
+    const text: string = data?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(text);
     if (!parsed) return Response.json({ reply: text.slice(0, 500) || "…", action: null });
     return Response.json(parsed);
-  } catch (err) {
-    if (err instanceof Anthropic.RateLimitError) {
-      return Response.json({ error: "Trop de demandes — réessayez dans un instant." }, { status: 429 });
-    }
-    if (err instanceof Anthropic.AuthenticationError) {
-      return Response.json({ error: "Clé API invalide côté serveur." }, { status: 503 });
-    }
+  } catch {
     return Response.json({ error: "L'assistant n'a pas répondu." }, { status: 502 });
   }
 }
