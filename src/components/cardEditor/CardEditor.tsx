@@ -18,7 +18,8 @@ export default function CardEditor() {
   const setActiveDrawer = useCardStore((s) => s.setActiveDrawer);
 
   useEffect(() => {
-    setActiveDrawer("modeles");
+    // respecte un tiroir déjà choisi (raccourcis du Designer IA) ; sinon défaut
+    if (!useCardStore.getState().activeDrawer) setActiveDrawer("modeles");
   }, [setActiveDrawer]);
 
   return (

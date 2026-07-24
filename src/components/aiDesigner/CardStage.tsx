@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Lock, Stamp, Gift, QrCode, Building2, Box, Apple, Smartphone,
-  Wifi, BatteryFull, Signal, Trophy,
+  Wifi, BatteryFull, Signal, Trophy, ImageIcon, Type, Palette, Sparkles,
 } from "lucide-react";
 import MiniCard from "@/components/cardEditor/MiniCard";
-import { useCardStore } from "@/store/cardStore";
+import { useCardStore, type DrawerId } from "@/store/cardStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { useUIStore } from "@/store/uiStore";
 import { PROGRAM_PRESETS } from "@/lib/loyalty";
@@ -24,10 +25,25 @@ export default function CardStage() {
   const config = useLoyaltyStore((s) => s.config);
   const setTotalStamps = useLoyaltyStore((s) => s.setTotalStamps);
   const applyPreset = useLoyaltyStore((s) => s.applyPreset);
+  const setActiveDrawer = useCardStore((s) => s.setActiveDrawer);
   const setPublishModalOpen = useUIStore((s) => s.setPublishModalOpen);
+  const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("carte");
   const [view, setView] = useState<View>("3d");
+
+  // raccourcis « Mode édition » : ouvrent l'éditeur avancé sur le bon tiroir
+  function openEditor(drawer: DrawerId) {
+    setActiveDrawer(drawer);
+    router.push("/carte/editeur");
+  }
+  const QUICK_TOOLS: { id: DrawerId; label: string; icon: typeof ImageIcon }[] = [
+    { id: "upload", label: "Logo", icon: ImageIcon },
+    { id: "images", label: "Image", icon: ImageIcon },
+    { id: "texte", label: "Texte", icon: Type },
+    { id: "tampons", label: "Tampons", icon: Stamp },
+    { id: "couleurs", label: "Couleurs", icon: Palette },
+  ];
 
   const nameLayer = card.layers.find((l) => l.type === "text" && l.name === "Nom du commerce");
   const business = nameLayer && nameLayer.type === "text" ? nameLayer.content : undefined;
@@ -59,6 +75,31 @@ export default function CardStage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {/* Mode édition + outils rapides */}
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => router.push("/carte/editeur")}
+            className="flex cursor-pointer items-center gap-2 text-xs font-medium"
+            style={{ color: "var(--text-dim)" }}
+            title="Ouvrir l'éditeur avancé"
+          >
+            <Sparkles size={13} className="text-[var(--accent-1)]" /> Mode édition
+          </button>
+          <div className="flex gap-1">
+            {QUICK_TOOLS.map((t) => (
+              <button
+                key={t.label}
+                onClick={() => openEditor(t.id)}
+                title={t.label}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+                style={{ borderColor: "var(--border)", color: "var(--text-dim)" }}
+              >
+                <t.icon size={14} />
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* --- aperçu carte : commun à tous les onglets --- */}
         <div
           className="relative mb-4 flex items-center justify-center overflow-hidden rounded-2xl py-6"

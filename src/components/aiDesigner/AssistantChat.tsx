@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Send, Mic, Paperclip, Wand2 } from "lucide-react";
+import { Sparkles, Send, Mic, Paperclip, Wand2, RefreshCw } from "lucide-react";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import { useCardStore } from "@/store/cardStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
@@ -57,8 +57,10 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   ]);
   const [phase, setPhase] = useState<"activity" | "tone" | "proposals" | "done">("activity");
   const [sector, setSector] = useState<string | null>(null);
+  const [tone, setTone] = useState<string | null>(null);
   const [mode, setMode] = useState<"stamps" | "points">("stamps");
   const [input, setInput] = useState("");
+  const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,17 +95,33 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     }
   }
 
-  function chooseTone(tone: Tone) {
-    if (!sector) return;
-    add({ role: "user", text: tone.label });
-    const proposals = proposalsFor(sector, tone.id);
-    add({
-      role: "assistant",
-      text: "Voici 3 propositions générées pour votre activité 👇 Cliquez-en une pour l'appliquer.",
-      proposals,
-    });
+  function generate(sec: string, toneId: string, intro: string) {
+    const proposals = proposalsFor(sec, toneId, shown.current);
+    proposals.forEach((p) => shown.current.add(p.id));
+    add({ role: "assistant", text: intro, proposals });
     setPhase("proposals");
     onStep(2);
+  }
+
+  function chooseTone(t: Tone) {
+    if (!sector) return;
+    add({ role: "user", text: t.label });
+    setTone(t.id);
+    generate(sector, t.id, "Voici 3 propositions générées pour votre activité 👇 Cliquez-en une pour l'appliquer.");
+  }
+
+  function regenerate() {
+    if (!sector || !tone) return;
+    generate(sector, tone, "Voici d'autres versions 👇");
+  }
+
+  function modifyWithAi() {
+    add({
+      role: "assistant",
+      text: "Bien sûr. Sur quelle ambiance voulez-vous partir ?",
+      chips: TONES.map((t) => ({ label: t.label, kind: "tone", value: t.id })),
+    });
+    setPhase("tone");
   }
 
   function applyProposal(entry: TemplateEntry) {
@@ -251,21 +269,39 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
               )}
 
               {m.proposals && (
-                <div className="mt-2.5 grid grid-cols-3 gap-2">
-                  {m.proposals.map((p) => (
+                <>
+                  <div className="mt-2.5 grid grid-cols-3 gap-2">
+                    {m.proposals.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => applyProposal(p)}
+                        className="group overflow-hidden rounded-xl border transition-transform hover:-translate-y-0.5 hover:border-[var(--accent-1)]"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        <MiniCard doc={p.build()} width={130} preview />
+                        <span className="block truncate px-1.5 py-1 text-left text-[10px]" style={{ background: "var(--panel-soft)", color: "var(--text-dim)" }}>
+                          {p.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex gap-2">
                     <button
-                      key={p.id}
-                      onClick={() => applyProposal(p)}
-                      className="group overflow-hidden rounded-xl border transition-transform hover:-translate-y-0.5 hover:border-[var(--accent-1)]"
-                      style={{ borderColor: "var(--border)" }}
+                      onClick={regenerate}
+                      className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+                      style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
                     >
-                      <MiniCard doc={p.build()} width={130} preview />
-                      <span className="block truncate px-1.5 py-1 text-left text-[10px]" style={{ background: "var(--panel-soft)", color: "var(--text-dim)" }}>
-                        {p.name}
-                      </span>
+                      <RefreshCw size={12} /> Générer d&apos;autres versions
                     </button>
-                  ))}
-                </div>
+                    <button
+                      onClick={modifyWithAi}
+                      className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+                      style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
+                    >
+                      <Wand2 size={12} /> Modifier avec l&apos;IA
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </div>

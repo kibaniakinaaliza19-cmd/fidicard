@@ -72,10 +72,18 @@ export const TONES: Tone[] = [
  * Trois propositions RÉELLES pour un secteur + un ton. On privilégie des
  * familles distinctes pour offrir un vrai choix visuel, puis on complète.
  */
-export function proposalsFor(sector: string, toneId: string): TemplateEntry[] {
+export function proposalsFor(
+  sector: string,
+  toneId: string,
+  exclude?: Set<string>,
+): TemplateEntry[] {
   const tone = TONES.find((t) => t.id === toneId) ?? TONES[0];
   const inSector = templateCatalog.filter((t) => t.sector === sector && t.loyalty);
-  const pool = inSector.length >= 3 ? inSector : templateCatalog.filter((t) => t.loyalty);
+  const base = inSector.length >= 3 ? inSector : templateCatalog.filter((t) => t.loyalty);
+  // « Générer d'autres versions » : on écarte les modèles déjà montrés ;
+  // si le vivier est épuisé, on repart de zéro.
+  let pool = exclude ? base.filter((t) => !exclude.has(t.id)) : base;
+  if (pool.length < 3) pool = base;
 
   const rank = (t: TemplateEntry) => {
     const i = t.family ? tone.families.indexOf(t.family) : -1;
