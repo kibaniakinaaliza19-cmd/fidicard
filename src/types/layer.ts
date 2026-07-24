@@ -115,6 +115,8 @@ export interface StampGridZone {
   showTierLabels: boolean;
   /** icône dessinée dans chaque tampon (nom lucide du catalogue) */
   icon?: string;
+  /** tampon importé (image data-URL) — prioritaire sur `icon` */
+  iconImage?: string;
   /** couleur de l'icône d'un tampon non validé */
   iconColor?: string;
   /** géométrie d'icône héritée d'une migration : offset/taille en % */

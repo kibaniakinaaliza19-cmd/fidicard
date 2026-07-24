@@ -1,36 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Lock, Stamp, Gift, QrCode, Building2, Box, Apple, Smartphone,
-  Wifi, BatteryFull, Signal, Trophy, ImageIcon, Type, Palette, Sparkles,
+  Lock, Stamp, Gift, Barcode, Building2, Box, Apple, Smartphone,
+  Wifi, BatteryFull, Signal, Trophy, ImageIcon, Type, Palette, Sparkles, UploadCloud,
 } from "lucide-react";
-import MiniCard from "@/components/cardEditor/MiniCard";
+import WalletCard from "@/components/aiDesigner/WalletCard";
 import { useCardStore, type DrawerId } from "@/store/cardStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { useUIStore } from "@/store/uiStore";
 import { PROGRAM_PRESETS } from "@/lib/loyalty";
+import { searchStamps, getStampIcon } from "@/lib/stampCatalog";
 
 type Tab = "carte" | "tampons" | "recompenses" | "parametres";
 type View = "3d" | "apple" | "google";
 
 const STAMP_COUNTS = [5, 6, 8, 10, 12, 15];
+// jeu compact de tampons pour le carrousel (icônes lucide réelles)
+const CAROUSEL_STAMPS = searchStamps("", "all").slice(0, 60);
 
 export default function CardStage() {
   const card = useCardStore((s) => s.card);
   const setCardName = useCardStore((s) => s.setCardName);
+  const updateZone = useCardStore((s) => s.updateZone);
   const config = useLoyaltyStore((s) => s.config);
   const setTotalStamps = useLoyaltyStore((s) => s.setTotalStamps);
+  const setMode = useLoyaltyStore((s) => s.setMode);
   const applyPreset = useLoyaltyStore((s) => s.applyPreset);
   const setActiveDrawer = useCardStore((s) => s.setActiveDrawer);
   const setPublishModalOpen = useUIStore((s) => s.setPublishModalOpen);
+  const pushToast = useUIStore((s) => s.pushToast);
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("carte");
   const [view, setView] = useState<View>("3d");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // zone de tampons (v2) — pour choisir/importer l'icône du tampon
+  const zone = useMemo(
+    () => (card.version === 2 ? card.zones?.find((z) => z.kind === "stampGrid") : undefined),
+    [card],
+  );
+  function setZoneIcon(lucide: string) {
+    if (zone) updateZone(zone.id, { icon: lucide, iconImage: undefined });
+  }
+  function importStamp(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !zone) return;
+    if (file.size > 2 * 1024 * 1024) { pushToast("Image trop lourde (2 Mo max)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => { updateZone(zone.id, { iconImage: reader.result as string }); pushToast("Tampon importé appliqué."); };
+    reader.readAsDataURL(file);
+  }
 
   // raccourcis « Mode édition » : ouvrent l'éditeur avancé sur le bon tiroir
   function openEditor(drawer: DrawerId) {
@@ -111,7 +136,7 @@ export default function CardStage() {
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               style={{ filter: "drop-shadow(0 24px 40px rgba(0,0,0,0.5))" }}
             >
-              <MiniCard doc={card} width={320} />
+              <WalletCard doc={card} width={300} />
             </motion.div>
           )}
           {view === "apple" && (
@@ -120,13 +145,13 @@ export default function CardStage() {
                 <span>9:41</span>
                 <span className="flex items-center gap-1"><Signal size={10} /><Wifi size={10} /><BatteryFull size={12} /></span>
               </div>
-              <MiniCard doc={card} width={272} />
+              <WalletCard doc={card} width={272} />
             </div>
           )}
           {view === "google" && (
             <div className="rounded-[1.5rem] border-4 p-2.5" style={{ borderColor: "#222", background: "#1a1a1a", width: 300 }}>
               <p className="mb-2 px-1 text-[11px] font-medium text-white/70">Google Wallet</p>
-              <MiniCard doc={card} width={268} />
+              <WalletCard doc={card} width={268} />
             </div>
           )}
         </div>
@@ -162,34 +187,97 @@ export default function CardStage() {
             </p>
             <LockedRow icon={Stamp} label="Zone des tampons" value={config.mode === "points" ? "Points" : `${config.totalStamps} tampons`} />
             <LockedRow icon={Gift} label="Récompense" value={lastTier?.description ?? "À définir"} />
-            <LockedRow icon={QrCode} label="QR Code" value="Position automatique" />
+            <LockedRow icon={Barcode} label="Code-barres" value="Position automatique" />
             <LockedRow icon={Building2} label="Informations de base" value={business ?? "Entreprise"} />
           </div>
         )}
 
         {tab === "tampons" && (
           <div>
-            <p className="mb-2 text-sm font-semibold" style={{ color: "var(--text)" }}>Nombre de tampons</p>
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {STAMP_COUNTS.map((n) => (
+            {/* type de programme : tampons ou points */}
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>Système de fidélité</p>
+            <div className="mb-4 flex gap-2">
+              {([["stamps", "Tampons"], ["points", "Points"]] as ["stamps" | "points", string][]).map(([m, label]) => (
                 <button
-                  key={n}
-                  onClick={() => setTotalStamps(n)}
-                  className="cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className="flex-1 cursor-pointer rounded-lg border py-2 text-xs font-semibold transition-colors"
                   style={{
-                    borderColor: config.totalStamps === n ? "var(--accent-1)" : "var(--border)",
-                    background: config.totalStamps === n ? "var(--accent-glow)" : "transparent",
-                    color: config.totalStamps === n ? "var(--accent-1)" : "var(--text-dim)",
+                    borderColor: config.mode === m ? "var(--accent-1)" : "var(--border)",
+                    background: config.mode === m ? "var(--accent-glow)" : "var(--panel-soft)",
+                    color: config.mode === m ? "var(--accent-1)" : "var(--text-dim)",
                   }}
                 >
-                  {n}
+                  {label}
                 </button>
               ))}
             </div>
-            <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>
-              La grille se reconstruit automatiquement. Pour choisir l'icône du tampon,
-              ouvrez l'éditeur avancé.
-            </p>
+
+            {config.mode === "stamps" && (
+              <>
+                <p className="mb-2 text-sm font-semibold" style={{ color: "var(--text)" }}>Nombre de tampons</p>
+                <div className="mb-4 flex flex-wrap gap-1.5">
+                  {STAMP_COUNTS.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setTotalStamps(n)}
+                      className="cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        borderColor: config.totalStamps === n ? "var(--accent-1)" : "var(--border)",
+                        background: config.totalStamps === n ? "var(--accent-glow)" : "transparent",
+                        color: config.totalStamps === n ? "var(--accent-1)" : "var(--text-dim)",
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+
+                {/* carrousel compact de tampons (défilement horizontal) */}
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>Choisir un tampon</p>
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    className="flex cursor-pointer items-center gap-1 text-[11px] font-medium transition-colors hover:text-[var(--accent-1)]"
+                    style={{ color: "var(--text-dim)" }}
+                  >
+                    <UploadCloud size={12} /> Importer
+                  </button>
+                  <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/*" className="hidden" onChange={importStamp} />
+                </div>
+                <div className="flex gap-1.5 overflow-x-auto pb-1.5">
+                  {CAROUSEL_STAMPS.map((s) => {
+                    const Icon = getStampIcon(s.lucide);
+                    const active = zone?.icon === s.lucide && !zone?.iconImage;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setZoneIcon(s.lucide)}
+                        title={s.label}
+                        className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+                        style={{
+                          borderColor: active ? "var(--accent-1)" : "var(--border)",
+                          background: active ? "var(--accent-glow)" : "transparent",
+                          color: active ? "var(--accent-1)" : "var(--text-dim)",
+                        }}
+                      >
+                        <Icon size={16} strokeWidth={1.75} />
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px]" style={{ color: "var(--text-dim)" }}>
+                  La grille se reconstruit automatiquement. Le tampon choisi s&rsquo;applique à toutes les cases.
+                </p>
+              </>
+            )}
+
+            {config.mode === "points" && (
+              <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>
+                En mode Points, vos clients cumulent des points (1 € = {config.tauxConversion} pts) au lieu de tampons.
+                Définissez la récompense dans l&rsquo;onglet Récompenses.
+              </p>
+            )}
             <EditorLink />
           </div>
         )}

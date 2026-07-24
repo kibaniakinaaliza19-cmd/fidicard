@@ -14,6 +14,7 @@
 
 import type {
   IconLayer,
+  ImageLayer,
   Layer,
   ShapeLayer,
   StampGridZone,
@@ -120,8 +121,30 @@ function renderStampGrid(zone: StampGridZone, config: LoyaltyConfig, opts: Rende
       strokeWidth: isTier ? 2 : style.border === "transparent" ? 0 : 1,
     } satisfies ShapeLayer);
 
-    if (zone.icon) {
-      const ib = zone.iconBox ?? { dx: p.w * 0.2, dy: p.h * 0.19, w: p.w * 0.6, h: p.h * 0.63 };
+    const ib = zone.iconBox ?? { dx: p.w * 0.2, dy: p.h * 0.19, w: p.w * 0.6, h: p.h * 0.63 };
+    if (zone.iconImage) {
+      // tampon importé (image) — prioritaire sur l'icône lucide
+      layers.push({
+        id: `${zone.id}:img:${i + 1}`,
+        type: "image",
+        name: `Icône ${i + 1}`,
+        x: p.x + ib.dx,
+        y: p.y + ib.dy,
+        width: ib.w,
+        height: ib.h,
+        rotation: 0,
+        opacity: on ? 100 : 45,
+        zIndex: z++,
+        locked: false,
+        hidden: false,
+        groupId: zone.id,
+        src: zone.iconImage,
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        radius: 0,
+      } satisfies ImageLayer);
+    } else if (zone.icon) {
       layers.push({
         id: `${zone.id}:icone:${i + 1}`,
         type: "icon",
