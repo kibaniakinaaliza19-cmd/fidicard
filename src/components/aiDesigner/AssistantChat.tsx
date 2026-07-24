@@ -60,12 +60,23 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [tone, setTone] = useState<string | null>(null);
   const [mode, setMode] = useState<"stamps" | "points">("stamps");
   const [input, setInput] = useState("");
+  // null = pas encore su ; true = vrai modèle branché ; false = repli local
+  const [aiLive, setAiLive] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
   const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, busy]);
+
+  // détecte si un vrai modèle est configuré côté serveur
+  useEffect(() => {
+    fetch("/api/assistant")
+      .then((r) => r.json())
+      .then((d) => setAiLive(Boolean(d.available)))
+      .catch(() => setAiLive(false));
+  }, []);
 
   const add = (m: Omit<Msg, "id">) => setMessages((prev) => [...prev, { id: nextId(), ...m }]);
 
@@ -153,11 +164,68 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     pushToast(`Carte « ${entry.name} » appliquée.`);
   }
 
+  // --- mode « vrai modèle » : le serveur mène la conversation ---
+  type Action =
+    | { type: "propose"; sector: string; tone: string }
+    | { type: "set_stamps"; count: number }
+    | { type: "set_reward"; text: string }
+    | null;
+
+  function execAction(action: Action) {
+    if (!action) return;
+    if (action.type === "propose") {
+      const proposals = proposalsFor(action.sector, action.tone, shown.current);
+      proposals.forEach((p) => shown.current.add(p.id));
+      setSector(action.sector);
+      setTone(action.tone);
+      add({ role: "assistant", proposals });
+      setPhase("proposals");
+      onStep(2);
+    } else if (action.type === "set_stamps") {
+      useLoyaltyStore.getState().setTotalStamps(action.count);
+    } else if (action.type === "set_reward") {
+      const cfg = useLoyaltyStore.getState().config;
+      const pos = cfg.paliers.length ? cfg.paliers[cfg.paliers.length - 1].position : cfg.totalStamps;
+      setConfig({
+        paliers: [{ position: pos, label: shortReward(action.text), description: action.text, type: inferTierType(action.text) }],
+      });
+    }
+  }
+
+  async function runAi(userText: string) {
+    const history = messages.filter((m) => m.text).map((m) => ({ role: m.role, content: m.text as string }));
+    history.push({ role: "user", content: userText });
+    setBusy(true);
+    try {
+      const r = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
+      const data = await r.json();
+      if (!r.ok || typeof data.reply !== "string") {
+        add({ role: "assistant", text: data.error || "Je n'ai pas pu répondre — réessayez." });
+        return;
+      }
+      add({ role: "assistant", text: data.reply });
+      execAction(data.action ?? null);
+      if (phase === "activity") onStep(1);
+    } catch {
+      add({ role: "assistant", text: "Connexion à l'assistant impossible. Réessayez dans un instant." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function submit(raw?: string) {
     const text = (raw ?? input).trim();
-    if (!text) return;
+    if (!text || busy) return;
     setInput("");
     add({ role: "user", text });
+    if (aiLive) {
+      runAi(text);
+      return;
+    }
     if (phase === "activity") handleActivity(text);
     else if (phase === "tone") {
       const t = TONES.find((x) => text.toLowerCase().includes(x.label.split(" ")[0].toLowerCase()));
@@ -242,16 +310,18 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         {messages.map((m) => (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
             <div className="max-w-[85%]">
-              <div
-                className="rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed"
-                style={
-                  m.role === "user"
-                    ? { background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))", color: "#fff" }
-                    : { background: "var(--panel-soft)", color: "var(--text)" }
-                }
-              >
-                {m.text}
-              </div>
+              {m.text && (
+                <div
+                  className="rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed"
+                  style={
+                    m.role === "user"
+                      ? { background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))", color: "#fff" }
+                      : { background: "var(--panel-soft)", color: "var(--text)" }
+                  }
+                >
+                  {m.text}
+                </div>
+              )}
 
               {m.chips && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -306,6 +376,15 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
             </div>
           </div>
         ))}
+        {busy && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-1.5 rounded-2xl px-3.5 py-2.5" style={{ background: "var(--panel-soft)" }}>
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--accent-1)", animationDelay: "0ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--accent-1)", animationDelay: "150ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--accent-1)", animationDelay: "300ms" }} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* suggestions rapides */}
@@ -335,8 +414,9 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="Décrivez votre entreprise…"
-          className="flex-1 rounded-xl border bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-[var(--accent-1)]"
+          disabled={busy}
+          placeholder={busy ? "L'assistant réfléchit…" : "Décrivez votre entreprise…"}
+          className="flex-1 rounded-xl border bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-[var(--accent-1)] disabled:opacity-60"
           style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
         />
         <button onClick={startVoice} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Parler">
