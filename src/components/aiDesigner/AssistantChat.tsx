@@ -41,6 +41,14 @@ const SECTOR_CHIPS = [
   "Institut de beauté", "Bar", "Fleuriste", "Garage",
 ];
 
+// Suggestions rapides sous la conversation. Déclarées hors du composant : les
+// actions sont décrites en données, jamais en fermetures créées au rendu.
+const QUICK: { label: string; send?: string; open?: "import" }[] = [
+  { label: "Importer une carte", open: "import" },
+  { label: "Café à tampons", send: "Je tiens un café, je veux une carte à tampons" },
+  { label: "Salon premium", send: "Salon de coiffure haut de gamme" },
+];
+
 export default function AssistantChat({ onStep }: { onStep: (n: number) => void }) {
   const applyTemplate = useCardStore((s) => s.applyTemplate);
   const setConfig = useLoyaltyStore((s) => s.setConfig);
@@ -58,7 +66,10 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [phase, setPhase] = useState<"activity" | "tone" | "proposals" | "done">("activity");
   const [sector, setSector] = useState<string | null>(null);
   const [tone, setTone] = useState<string | null>(null);
-  const [mode, setMode] = useState<"stamps" | "points">("stamps");
+  // null tant que le commerçant n'a pas exprimé de préférence : dans ce cas
+  // c'est le modèle appliqué qui décide. S'il a demandé « des points »,
+  // sa demande l'emporte sur le réglage du modèle.
+  const [mode, setMode] = useState<"stamps" | "points" | null>(null);
   const [input, setInput] = useState("");
   // null = pas encore su ; true = vrai modèle branché ; false = repli local
   const [aiLive, setAiLive] = useState<boolean | null>(null);
@@ -140,7 +151,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     const L = entry.loyalty;
     if (L) {
       setConfig({
-        mode: L.mode === "points" ? "points" : "stamps",
+        mode: mode ?? (L.mode === "points" ? "points" : "stamps"),
         totalStamps: L.total,
         paliers: [
           {
@@ -222,6 +233,13 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     if (!text || busy) return;
     setInput("");
     add({ role: "user", text });
+    // « je veux des points » doit être entendu dans les deux régimes
+    // (vrai modèle ou repli local), et à n'importe quel moment.
+    const asked = detectMode(text);
+    if (asked) {
+      setMode(asked);
+      if (phase === "done") useLoyaltyStore.getState().setMode(asked);
+    }
     if (aiLive) {
       runAi(text);
       return;
@@ -389,14 +407,10 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
 
       {/* suggestions rapides */}
       <div className="flex flex-wrap gap-1.5 border-t px-5 pt-3" style={{ borderColor: "var(--border)" }}>
-        {[
-          { label: "Importer une carte", run: () => setImportCardOpen(true) },
-          { label: "Café à tampons", run: () => submit("Je tiens un café, je veux une carte à tampons") },
-          { label: "Salon premium", run: () => submit("Salon de coiffure haut de gamme") },
-        ].map((s) => (
+        {QUICK.map((s) => (
           <button
             key={s.label}
-            onClick={s.run}
+            onClick={() => (s.open === "import" ? setImportCardOpen(true) : submit(s.send))}
             className="cursor-pointer rounded-full border px-2.5 py-1 text-[11px] transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
             style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
           >

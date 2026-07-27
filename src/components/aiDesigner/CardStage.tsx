@@ -299,7 +299,7 @@ export default function CardStage() {
                 </div>
               ))}
             </div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>Programmes prêts à l'emploi</p>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>Programmes prêts à l&apos;emploi</p>
             <div className="flex flex-wrap gap-1.5">
               {PROGRAM_PRESETS.slice(0, 5).map((preset) => (
                 <button

@@ -108,9 +108,12 @@ export function migrateCardDoc(doc: CardDoc): CardDoc {
 /** reconstitue le document v1 d'origine depuis un document migré */
 export function rollbackCardDoc(doc: CardDoc): CardDoc {
   if (doc.version !== 2 || !doc.design_json_v1) return doc;
-  const { design_json_v1, zones: _zones, version: _version, ...rest } = doc;
-  return {
-    ...rest,
-    layers: [...doc.layers, ...design_json_v1.layers].sort((a, b) => a.zIndex - b.zIndex),
+  const back: CardDoc = {
+    ...doc,
+    version: 1,
+    layers: [...doc.layers, ...doc.design_json_v1.layers].sort((a, b) => a.zIndex - b.zIndex),
   };
+  delete back.zones;
+  delete back.design_json_v1;
+  return back;
 }

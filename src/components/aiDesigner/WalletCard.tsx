@@ -1,34 +1,44 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import type { CardDoc } from "@/types/layer";
+
+const BARCODE_TOTAL = 160;
+
+// Génération pure, hors composant : même code → mêmes barres, sans état de
+// rendu qui traînerait d'un affichage à l'autre.
+function buildBars(value: string): { x: number; w: number }[] {
+  let seed = 0;
+  for (const ch of value) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const out: { x: number; w: number }[] = [];
+  let x = 2;
+  while (x < BARCODE_TOTAL - 2) {
+    const w = 1 + Math.floor(next() * 3);
+    if (next() > 0.42) out.push({ x, w });
+    x += w + (next() > 0.5 ? 1 : 0);
+  }
+  return out;
+}
+
+// Vrai après hydratation, faux au rendu serveur — sans setState dans un effet.
+const noSubscribe = () => () => {};
+const useHydrated = () =>
+  useSyncExternalStore(noSubscribe, () => true, () => false);
 
 // Code-barres SVG déterministe (jamais de QR — FidiCard utilise le code-barres
 // des Wallet). Les barres sont dérivées du code client, stable d'un rendu à
 // l'autre.
 function Barcode({ value, width, height = 44 }: { value: string; width: number; height: number }) {
-  const bars = useMemo(() => {
-    let seed = 0;
-    for (const ch of value) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
-    const rng = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
-    const out: { x: number; w: number }[] = [];
-    let x = 2;
-    const total = 160;
-    while (x < total - 2) {
-      const w = 1 + Math.floor(rng() * 3);
-      if (rng() > 0.42) out.push({ x, w });
-      x += w + (rng() > 0.5 ? 1 : 0);
-    }
-    return { out, total };
-  }, [value]);
+  const bars = useMemo(() => buildBars(value), [value]);
 
   return (
-    <svg viewBox={`0 0 ${bars.total} ${height}`} width={width} height={height} preserveAspectRatio="none" aria-hidden>
-      {bars.out.map((b, i) => (
+    <svg viewBox={`0 0 ${BARCODE_TOTAL} ${height}`} width={width} height={height} preserveAspectRatio="none" aria-hidden>
+      {bars.map((b, i) => (
         <rect key={i} x={b.x} y={0} width={b.w} height={height} fill="#141414" />
       ))}
     </svg>
@@ -44,8 +54,7 @@ function Barcode({ value, width, height = 44 }: { value: string; width: number; 
 export default function WalletCard({ doc, width = 300 }: { doc: CardDoc; width?: number }) {
   // le code dérive de l'id de la carte (non déterministe au SSR) → on ne rend
   // le code-barres qu'après montage pour éviter tout décalage d'hydratation
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   const code = useMemo(() => {
     const raw = (doc.id || "FIDICARD").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
