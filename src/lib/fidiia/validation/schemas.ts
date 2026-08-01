@@ -25,21 +25,39 @@ export const CibleSchema = z.enum([
 ]);
 export type Cible = z.infer<typeof CibleSchema>;
 
+/* --------------------------------------------------------------- bornes */
+//
+// Toute valeur chiffrée que FidiIA peut produire est déclarée ici, et nulle
+// part ailleurs. Le texte des prompts a le droit d'écrire ces nombres en
+// clair — un test vérifie qu'aucun chiffre du contrat ne diverge de cette
+// liste. Voir __tests__/prompts.test.ts.
+
 /** Bornes reprises du moteur de fidélité : objectif entre 1 et 30. */
 export const OBJECTIF_MIN = 1;
 export const OBJECTIF_MAX = 30;
 /** Le libellé court s'écrit DANS le tampon : 8 caractères au maximum. */
 export const LIBELLE_COURT_MAX = 8;
+/** Nombre de paliers acceptés dans une action `paliers`. */
+export const PALIERS_MIN = 1;
+export const PALIERS_MAX = 5;
+/** Nombre de propositions montrées au commerçant. Règle produit. */
+export const NB_PROPOSITIONS = 3;
+/** Longueur maximale d'une description de palier ou d'une récompense. */
+export const TEXTE_MAX = 120;
+/** Longueur maximale du texte affiché au commerçant. */
+export const REPLY_MAX = 2000;
+/** Longueur maximale d'un nom de secteur ou de calque. */
+export const NOM_MAX = 60;
 
 export const PalierSchema = z.object({
   position: z.number().int().min(1).max(OBJECTIF_MAX),
   label: z.string().min(1).max(LIBELLE_COURT_MAX),
-  description: z.string().min(1).max(120),
+  description: z.string().min(1).max(TEXTE_MAX),
 });
 export type Palier = z.infer<typeof PalierSchema>;
 
 export const RecompenseSchema = z.object({
-  texte: z.string().min(1).max(120),
+  texte: z.string().min(1).max(TEXTE_MAX),
   libelleCourt: z.string().min(1).max(LIBELLE_COURT_MAX),
 });
 export type Recompense = z.infer<typeof RecompenseSchema>;
@@ -49,7 +67,7 @@ export type Recompense = z.infer<typeof RecompenseSchema>;
 export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("proposer"),
-    secteur: z.string().min(2).max(60),
+    secteur: z.string().min(2).max(NOM_MAX),
     ambiance: AmbianceSchema,
   }),
   z.object({
@@ -62,7 +80,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("paliers"),
-    paliers: z.array(PalierSchema).min(1).max(5),
+    paliers: z.array(PalierSchema).min(PALIERS_MIN).max(PALIERS_MAX),
   }),
   z.object({
     type: z.literal("recompense"),
@@ -71,7 +89,7 @@ export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("modifier"),
     cible: CibleSchema,
-    valeur: z.string().max(120).optional(),
+    valeur: z.string().max(TEXTE_MAX).optional(),
   }),
 ]);
 export type Action = z.infer<typeof ActionSchema>;
@@ -89,7 +107,7 @@ export const NOMS_ACTIONS = [
 /* -------------------------------------------------------- sortie complète */
 
 export const SortieAssistantSchema = z.object({
-  reply: z.string().min(1).max(2000),
+  reply: z.string().min(1).max(REPLY_MAX),
   action: ActionSchema.nullable(),
 });
 export type SortieAssistant = z.infer<typeof SortieAssistantSchema>;
@@ -107,7 +125,7 @@ export const TypeCalqueSchema = z.enum([
 
 export const CalqueSchema = z.object({
   id: z.string().min(1),
-  nom: z.string().min(1).max(60),
+  nom: z.string().min(1).max(NOM_MAX),
   type: TypeCalqueSchema,
 });
 export type Calque = z.infer<typeof CalqueSchema>;
@@ -115,7 +133,7 @@ export type Calque = z.infer<typeof CalqueSchema>;
 export const ProgrammeSchema = z.object({
   mode: ModeFideliteSchema,
   objectif: z.number().int().min(OBJECTIF_MIN).max(OBJECTIF_MAX),
-  paliers: z.array(PalierSchema).max(5),
+  paliers: z.array(PalierSchema).max(PALIERS_MAX),
   recompense: RecompenseSchema,
 });
 export type Programme = z.infer<typeof ProgrammeSchema>;
@@ -126,7 +144,7 @@ export type Programme = z.infer<typeof ProgrammeSchema>;
  * garde `lib/fidiia` testable sans rien charger de l'interface.
  */
 export const CarteSchema = z.object({
-  nomCommerce: z.string().min(1).max(60),
+  nomCommerce: z.string().min(1).max(NOM_MAX),
   calques: z.array(CalqueSchema),
   /** Identifiants des zones de fidélité. Il doit y en avoir exactement une. */
   zonesFidelite: z.array(z.string().min(1)),

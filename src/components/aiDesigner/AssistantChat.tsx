@@ -312,10 +312,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
           <Sparkles size={20} className="text-white" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--text)" }}>
-            FidiIA
-            <span className="rounded-md px-1.5 py-0.5 text-[9px] font-bold" style={{ background: "var(--accent-glow)", color: "var(--accent-1)" }}>IA</span>
-          </p>
+          <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>FidiIA</p>
           <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>Votre expert fidélité</p>
         </div>
         <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-dim)" }}>

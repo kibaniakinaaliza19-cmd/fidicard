@@ -7,8 +7,11 @@
 // Ce texte décrit le contrat au modèle. Le contrat qui FAIT AUTORITÉ est
 // celui de validation/schemas.ts : en cas de divergence, c'est le schéma qui
 // gagne et la sortie est rejetée.
-
-import { OBJECTIF_MAX, OBJECTIF_MIN, LIBELLE_COURT_MAX } from "../validation/schemas.ts";
+//
+// Les chiffres sont écrits en clair, pas interpolés : le texte se rédige
+// librement. En contrepartie, __tests__/prompts.test.ts refuse tout nombre
+// qui ne correspond à aucune borne déclarée dans schemas.ts. Un chiffre qui
+// ment fait échouer `npm test`, il n'atteint jamais un commerçant.
 
 export const CONTRACT_VERSION = "1.0.0";
 
@@ -24,23 +27,23 @@ LES SIX ACTIONS
   proposer     { "type":"proposer", "secteur":"<secteur>",
                  "ambiance":"chaud|neutre|froid" }
   mode         { "type":"mode", "mode":"stamps|points" }
-  objectif     { "type":"objectif", "valeur":<${OBJECTIF_MIN} à ${OBJECTIF_MAX}> }
+  objectif     { "type":"objectif", "valeur":<1 à 30> }
   paliers      { "type":"paliers", "paliers":[
-                   { "position":<n>, "label":"<≤${LIBELLE_COURT_MAX} car.>",
+                   { "position":<n>, "label":"<≤8 car.>",
                      "description":"<texte>" } ] }
   recompense   { "type":"recompense", "recompense":{
-                   "texte":"<texte>", "libelleCourt":"<≤${LIBELLE_COURT_MAX} car.>" } }
+                   "texte":"<texte>", "libelleCourt":"<≤8 car.>" } }
   modifier     { "type":"modifier",
                  "cible":"logo|couleurs|texte|icone|disposition|photo",
                  "valeur":"<optionnel>" }
 
 CONTRAINTES VÉRIFIÉES APRÈS TOI
 
-  objectif compris entre ${OBJECTIF_MIN} et ${OBJECTIF_MAX}
+  objectif compris entre 1 et 30
   aucun palier au-delà de l'objectif
   aucun doublon de position entre paliers
   le dernier palier porte une récompense
-  libellé court d'au plus ${LIBELLE_COURT_MAX} caractères
+  libellé court d'au plus 8 caractères
   exactement une zone de fidélité sur la carte
   aucun calque nommé comme un tampon
   aucun élément verrouillé modifié
