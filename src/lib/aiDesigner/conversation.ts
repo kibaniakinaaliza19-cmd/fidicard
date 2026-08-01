@@ -1,4 +1,4 @@
-// Cerveau de l'Assistant FidiCard (Designer IA).
+// Cerveau local de FidiIA (Designer IA) — repli déterministe sans clé.
 //
 // Déterministe et sans réseau : il comprend le secteur et le type de programme
 // à partir du langage naturel, puis sélectionne de VRAIS modèles du catalogue.

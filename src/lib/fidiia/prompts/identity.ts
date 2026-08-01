@@ -2,7 +2,7 @@
 //
 // À REMPLACER par le contenu de `IA Fidicard/Prompts systeme/identity.md`
 // quand ce fichier sera disponible. La version ci-dessous est reconstruite
-// depuis le cahier des charges (doc 02 « Ce que FidyAI n'est pas ») et le
+// depuis le cahier des charges (doc 02, « ce que l'IA n'est pas ») et le
 // dossier FidiIA (06 - CONVERSATION IA). Le reste du code n'utilise que la
 // constante et sa version : remplacer le texte ne casse rien.
 

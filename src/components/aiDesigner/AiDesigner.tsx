@@ -71,7 +71,7 @@ export default function AiDesigner() {
       </div>
 
       <p className="mt-3 text-center text-[11px]" style={{ color: "var(--text-faint)" }}>
-        Assistant propulsé par IA · FidiCard ·{" "}
+        FidiIA · FidiCard ·{" "}
         <Link href="/carte/editeur" className="underline hover:text-[var(--accent-1)]">éditeur avancé</Link>
       </p>
 

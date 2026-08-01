@@ -60,7 +60,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       id: nextId(),
       role: "assistant",
       text:
-        "Bonjour ! Je suis votre assistant FidiCard. Décrivez-moi votre activité, et je créerai pour vous une carte de fidélité professionnelle et unique.",
+        "Bonjour ! Je suis FidiIA. Décrivez-moi votre activité, et je créerai pour vous une carte de fidélité professionnelle et unique.",
     },
   ]);
   const [phase, setPhase] = useState<"activity" | "tone" | "proposals" | "done">("activity");
@@ -313,7 +313,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--text)" }}>
-            Assistant FidiCard
+            FidiIA
             <span className="rounded-md px-1.5 py-0.5 text-[9px] font-bold" style={{ background: "var(--accent-glow)", color: "var(--accent-1)" }}>IA</span>
           </p>
           <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>Votre expert fidélité</p>

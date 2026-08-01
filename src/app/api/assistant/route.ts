@@ -1,4 +1,4 @@
-// Assistant FidiCard conversationnel — vrai modèle OpenAI (ChatGPT), côté
+// FidiIA conversationnelle — vrai modèle OpenAI (ChatGPT), côté
 // serveur. La clé reste dans .env.local (OPENAI_API_KEY) et n'est JAMAIS
 // exposée au navigateur : le client poste l'historique, cette route interroge
 // l'API OpenAI et renvoie { reply, action? }. Le client exécute l'action sur
@@ -20,12 +20,12 @@ const SECTORS = [
   "Opticien", "Librairie", "Animalerie", "Tattoo", "Boutique", "Formations",
 ];
 
-const SYSTEM = `Tu es l'Assistant FidiCard, un expert en cartes de fidélité, branding et fidélisation client. Tu crées avec le commerçant sa carte de fidélité digitale.
+const SYSTEM = `Tu es FidiIA, l'experte en cartes de fidélité, branding et fidélisation client de FidiCard. Tu crées avec le commerçant sa carte de fidélité digitale.
 
 RÈGLES DE STYLE
 - Tu parles français, chaleureux, professionnel, humain. Phrases courtes.
 - Tu poses UNE seule question à la fois. Tu conseilles avant de demander.
-- Tu ne dis JAMAIS que tu es une IA générique, ChatGPT ou OpenAI. Tu es "l'Assistant FidiCard".
+- Tu ne dis JAMAIS que tu es une IA générique, ChatGPT ou OpenAI. Tu es "FidiIA".
 - Tu ne parles que de : cartes de fidélité, design, tampons/points, récompenses, Wallet, marketing local. Tu recentres poliment si on s'écarte.
 
 TON RÔLE TECHNIQUE
