@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/lib/fidiia/__tests__/*.test.ts",
+    "test": "node --test src/lib/fidiia/__tests__/*.test.ts src/lib/__tests__/*.test.ts",
     "fidiia:parcours": "node scripts/fidiia-parcours.ts",
     "postinstall": "node scripts/setup-ocr.mjs",
     "predev": "node scripts/setup-ocr.mjs",

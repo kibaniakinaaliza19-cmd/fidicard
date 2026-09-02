@@ -3,27 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import type { CardDoc } from "@/types/layer";
-
-const BARCODE_TOTAL = 160;
-
-// Génération pure, hors composant : même code → mêmes barres, sans état de
-// rendu qui traînerait d'un affichage à l'autre.
-function buildBars(value: string): { x: number; w: number }[] {
-  let seed = 0;
-  for (const ch of value) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
-  const next = () => {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return seed / 0x7fffffff;
-  };
-  const out: { x: number; w: number }[] = [];
-  let x = 2;
-  while (x < BARCODE_TOTAL - 2) {
-    const w = 1 + Math.floor(next() * 3);
-    if (next() > 0.42) out.push({ x, w });
-    x += w + (next() > 0.5 ? 1 : 0);
-  }
-  return out;
-}
+import { BARCODE_TOTAL, buildModules } from "@/lib/barcode";
 
 // Vrai après hydratation, faux au rendu serveur — sans setState dans un effet.
 const noSubscribe = () => () => {};
@@ -31,15 +11,15 @@ const useHydrated = () =>
   useSyncExternalStore(noSubscribe, () => true, () => false);
 
 // Code-barres SVG déterministe (jamais de QR — FidiCard utilise le code-barres
-// des Wallet). Les barres sont dérivées du code client, stable d'un rendu à
+// des Wallet). Les modules sont dérivés du code client, stables d'un rendu à
 // l'autre.
 function Barcode({ value, width, height = 44 }: { value: string; width: number; height: number }) {
-  const bars = useMemo(() => buildBars(value), [value]);
+  const modules = useMemo(() => buildModules(value, height), [value, height]);
 
   return (
     <svg viewBox={`0 0 ${BARCODE_TOTAL} ${height}`} width={width} height={height} preserveAspectRatio="none" aria-hidden>
-      {bars.map((b, i) => (
-        <rect key={i} x={b.x} y={0} width={b.w} height={height} fill="#141414" />
+      {modules.map((m, i) => (
+        <rect key={i} x={m.x} y={m.y} width={m.w} height={m.h} fill="#141414" />
       ))}
     </svg>
   );
@@ -70,6 +50,9 @@ export default function WalletCard({ doc, width = 300 }: { doc: CardDoc; width?:
           <>
             <Barcode value={code} width={width - 28} height={42} />
             <span className="text-[10px] font-medium tracking-[0.25em]" style={{ color: "#8a8a8a" }}>{pretty}</span>
+            {/* seule marque FidiCard tolérée sur une carte : une mention texte
+                discrète sous le code, dans le cartouche blanc. Jamais de logo. */}
+            <span className="text-[8px] tracking-[0.12em]" style={{ color: "#b4b4b4" }}>Propulsé par FidiCard</span>
           </>
         )}
       </div>
