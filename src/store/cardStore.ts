@@ -11,7 +11,6 @@ export type DrawerId =
   | "texte"
   | "images"
   | "formes"
-  | "qrcode"
   | "codebarres"
   | "upload"
   | "couleurs"

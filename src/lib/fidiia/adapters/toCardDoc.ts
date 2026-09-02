@@ -86,7 +86,26 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     }),
   ];
 
-  if (carte.calques.some((c) => c.type === "image")) {
+  // Photo de l'établissement : elle occupe le haut de la carte, sous les
+  // textes, jamais posée par-dessus une information.
+  if (carte.calques.some((c) => c.type === "image" && /photo/i.test(c.nom))) {
+    const photo: ImageLayer = {
+      ...socle("Photo de l'établissement", 0),
+      type: "image",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 42,
+      src: "",
+      brightness: 100,
+      contrast: 100,
+      saturate: 100,
+      radius: 0,
+    };
+    layers.unshift(photo);
+  }
+
+  if (carte.calques.some((c) => c.type === "image" && /logo/i.test(c.nom))) {
     const logo: ImageLayer = {
       ...socle("Logo", 4),
       type: "image",
@@ -135,8 +154,13 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     published: false,
     updatedAt: Date.now(),
     version: 2,
-    // Une seule zone, produite par la fabrique du chantier 2.
-    zones: [createDefaultStampGridZone(id("zone"), carte.programme.objectif)],
+    // Une zone de tampons UNIQUEMENT en mode tampons. En mode points, la
+    // progression est un compteur : poser une grille ici mélangerait les deux
+    // systèmes sur la même carte.
+    zones:
+      carte.programme.mode === "stamps"
+        ? [createDefaultStampGridZone(id("zone"), carte.programme.objectif)]
+        : [],
   };
 
   const config: Partial<LoyaltyConfig> = {

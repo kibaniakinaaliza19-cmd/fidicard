@@ -15,6 +15,8 @@ export interface EtatBrut {
   carteExistante?: boolean;
   carteAnalysee?: boolean;
   logo?: string;
+  /** Photo de l'établissement fournie par le commerçant, s'il en a une. */
+  photo?: string;
   systemeFidelite?: ModeFidelite;
   objectif?: number;
   paliers?: Palier[];

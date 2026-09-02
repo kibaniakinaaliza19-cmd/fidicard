@@ -13,7 +13,6 @@ import {
   EyeOff,
   Type,
   CircleDot,
-  QrCode,
   Barcode,
   ImageIcon,
   Crop,
@@ -204,8 +203,6 @@ export default function ImportCardModal() {
         keepLogos: [],
         convertStamps: false,
         tiers: [],
-        qrMode: "keep",
-        addFidiQr: false,
         addBarcode: false,
       }),
     );
@@ -612,35 +609,8 @@ export default function ImportCardModal() {
               </Field>
             )}
 
-            {/* QR */}
-            <Field label="QR code" icon={<QrCode size={13} />}>
-              {analysis.qr ? (
-                <div className="flex gap-2">
-                  {([
-                    ["keep", "Conserver l'original"],
-                    ["fidicard", "Remplacer par le QR FidiCard"],
-                  ] as const).map(([mode, label]) => (
-                    <button
-                      key={mode}
-                      onClick={() => patch({ qrMode: mode })}
-                      className="flex-1 cursor-pointer rounded-lg border py-2 text-xs font-medium transition-colors"
-                      style={{
-                        borderColor: choices.qrMode === mode ? "var(--accent-1)" : "var(--border)",
-                        background: choices.qrMode === mode ? "var(--accent-glow)" : "var(--panel-soft)",
-                        color: choices.qrMode === mode ? "var(--accent-1)" : "var(--text-dim)",
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <Toggle on={choices.addFidiQr} onChange={(v) => patch({ addFidiQr: v })} label="Ajouter le QR FidiCard (discret, déplaçable)" />
-              )}
-            </Field>
-
             <Field label="Code-barres" icon={<Barcode size={13} />}>
-              <Toggle on={choices.addBarcode} onChange={(v) => patch({ addBarcode: v })} label="Ajouter le code-barres FidiCard (offre Starter)" />
+              <Toggle on={choices.addBarcode} onChange={(v) => patch({ addBarcode: v })} label="Ajouter le code-barres FidiCard" />
             </Field>
 
             <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center">

@@ -12,7 +12,6 @@ import {
   createTextLayer,
   createShapeLayer,
   createImageLayer,
-  createQrCodeLayer,
   createBarcodeLayer,
   makeId,
 } from "@/lib/layerFactory";
@@ -35,8 +34,6 @@ export interface ImportChoices {
   stampAccent: string;
   /** paliers validés/corrigés par le commerçant (Phase 4) */
   tiers: ImportTier[];
-  qrMode: "keep" | "fidicard";
-  addFidiQr: boolean;
   addBarcode: boolean;
 }
 
@@ -53,8 +50,6 @@ export function defaultChoices(a: ImportAnalysis): ImportChoices {
     stampsFilled: 0,
     stampAccent: a.theme.accent,
     tiers: (a.program?.tiers ?? []).map((t) => ({ ...t })),
-    qrMode: "keep",
-    addFidiQr: false,
     addBarcode: false,
   };
 }
@@ -175,34 +170,9 @@ export function importToCard(a: ImportAnalysis, c: ImportChoices): CardDoc {
     );
   }
 
-  // QR : remplacé par le composant FidiCard à la position détectée…
-  if (a.qr && c.qrMode === "fidicard") {
-    layers.push(
-      createQrCodeLayer(z(), {
-        id: makeId("imp-qr"),
-        name: "QR FidiCard",
-        x: a.qr.x,
-        y: a.qr.y,
-        width: a.qr.w,
-        height: a.qr.h,
-        value: "https://fidicard.app/rejoindre",
-      }),
-    );
-  }
-  // … ou ajouté discrètement s'il n'y en avait pas
-  if (!a.qr && c.addFidiQr) {
-    layers.push(
-      createQrCodeLayer(z(), {
-        id: makeId("imp-qr"),
-        name: "QR FidiCard",
-        x: 84,
-        y: 70,
-        width: 12,
-        height: 12 * (a.frameWidth / a.frameHeight),
-        value: "https://fidicard.app/rejoindre",
-      }),
-    );
-  }
+  // Aucun QR n'est reporté sur la carte : FidiCard identifie le client par un
+  // CODE-BARRES. Le QR détecté sur la carte d'origine reste dans le fond
+  // nettoyé si le commerçant l'y a laissé, il n'est jamais recréé en calque.
 
   if (c.addBarcode) {
     layers.push(

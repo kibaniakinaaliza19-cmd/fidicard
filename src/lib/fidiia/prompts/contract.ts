@@ -13,7 +13,7 @@
 // qui ne correspond à aucune borne déclarée dans schemas.ts. Un chiffre qui
 // ment fait échouer `npm test`, il n'atteint jamais un commerçant.
 
-export const CONTRACT_VERSION = "1.0.0";
+export const CONTRACT_VERSION = "1.1.0";
 
 export const CONTRACT = `FORMAT DE RÉPONSE
 
@@ -44,8 +44,14 @@ CONTRAINTES VÉRIFIÉES APRÈS TOI
   aucun doublon de position entre paliers
   le dernier palier porte une récompense
   libellé court d'au plus 8 caractères
-  exactement une zone de fidélité sur la carte
+  une seule face : aucun verso, aucun dos
+  un code-barres, aucun code QR
+  un seul système : jamais points et tampons ensemble
+  en mode tampons, exactement une zone de fidélité
+  en mode points, aucune zone de tampons
   aucun calque nommé comme un tampon
+  photo de l'établissement intégrée quand elle est fournie
+  aucune coordonnée inventée
   aucun élément verrouillé modifié
 
 Une sortie qui viole l'une de ces contraintes est rejetée. Tu la corriges à

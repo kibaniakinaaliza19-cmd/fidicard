@@ -118,7 +118,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   }
 
   function generate(sec: string, toneId: string, intro: string) {
-    const proposals = proposalsFor(sec, toneId, shown.current);
+    const proposals = proposalsFor(sec, toneId, shown.current, mode);
     proposals.forEach((p) => shown.current.add(p.id));
     add({ role: "assistant", text: intro, proposals });
     setPhase("proposals");
@@ -150,8 +150,13 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     applyTemplate(entry.build());
     const L = entry.loyalty;
     if (L) {
+      // Le visuel du modèle décide du système : un modèle à tampons dessine une
+      // grille, un modèle à points une jauge. Forcer l'autre mode ici ferait
+      // cohabiter les deux sur la même carte. La préférence du commerçant est
+      // respectée en amont, dans le filtrage des propositions.
+      const modeCarte = L.mode === "points" ? "points" : "stamps";
       setConfig({
-        mode: mode ?? (L.mode === "points" ? "points" : "stamps"),
+        mode: modeCarte,
         totalStamps: L.total,
         paliers: [
           {
@@ -167,7 +172,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     add({
       role: "assistant",
       text:
-        `Votre carte « ${entry.name} » est prête ✨ Les tampons, la récompense et le QR code sont gérés automatiquement. ` +
+        `Votre carte « ${entry.name} » est prête ✨ Les tampons, la récompense et le code-barres sont gérés automatiquement. ` +
         "Ajustez la à droite, ou dites-moi quoi changer (couleur, nombre de tampons, récompense).",
     });
     setPhase("done");
@@ -185,7 +190,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   function execAction(action: Action) {
     if (!action) return;
     if (action.type === "propose") {
-      const proposals = proposalsFor(action.sector, action.tone, shown.current);
+      const proposals = proposalsFor(action.sector, action.tone, shown.current, mode);
       proposals.forEach((p) => shown.current.add(p.id));
       setSector(action.sector);
       setTone(action.tone);

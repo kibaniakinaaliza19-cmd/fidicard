@@ -85,21 +85,33 @@ export function creerSession(
  */
 export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[] = []): Carte {
   const objectif = etat.objectif ?? 10;
+  const mode = etat.systemeFidelite ?? "stamps";
   const recompense = etat.recompense ?? { texte: "Une prestation offerte", libelleCourt: "Offert" };
   const paliersExistants = (etat.paliers ?? []).filter((p) => p.position < objectif);
+
+  // Un seul système par carte. En mode points, aucune zone de tampons n'est
+  // produite : c'est un compteur qui porte la progression. Mélanger les deux
+  // rendrait la carte incompréhensible pour le client au comptoir.
+  const enTampons = mode === "stamps";
+
   return {
     nomCommerce: etat.nomCommerce ?? "Mon commerce",
     calques: [
       { id: "fond", nom: "Fond", type: "fond" },
-      { id: "nom", nom: "Nom du commerce", type: "texte" },
-      { id: "regle", nom: "Règle du programme", type: "texte" },
+      // La photo de l'établissement passe avant le reste : c'est elle qui fait
+      // reconnaître le commerce. Elle n'apparaît que si le commerçant en a
+      // fourni une — jamais inventée.
+      ...(etat.photo ? [{ id: "photo", nom: "Photo de l'établissement", type: "image" as const }] : []),
+      { id: "nom", nom: "Nom du commerce", type: "texte" as const },
+      { id: "regle", nom: "Règle du programme", type: "texte" as const },
       ...(etat.logo ? [{ id: "logo", nom: "Logo", type: "image" as const }] : []),
-      { id: "instruction", nom: "Instruction de scan", type: "texte" },
-      { id: "code", nom: "Code-barres", type: "codebarres" },
+      ...(enTampons ? [] : [{ id: "compteur", nom: "Compteur de points", type: "texte" as const }]),
+      { id: "instruction", nom: "Instruction de scan", type: "texte" as const },
+      { id: "code", nom: "Code-barres", type: "codebarres" as const },
     ],
-    zonesFidelite: ["zone-fidelite"],
+    zonesFidelite: enTampons ? ["zone-fidelite"] : [],
     programme: {
-      mode: etat.systemeFidelite ?? "stamps",
+      mode,
       objectif,
       paliers: [
         ...paliersExistants,
@@ -265,7 +277,7 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
   if (decision.step === "CREATION" || repli) {
     const cibles = decision.step === "MODIFICATION" ? detecterModificationCiblee(texte) : [];
     const carte = construireCarte(session.etat, cibles);
-    verdicts = controlerCarte(carte, session.memory);
+    verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
     if (toutValide(verdicts)) {
       session.carte = carte;
       session.carteProposee = true;
@@ -279,7 +291,7 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
     }
   } else if (decision.step === "MODIFICATION" && session.carte) {
     const carte: Carte = { ...session.carte, ciblesModifiees: detecterModificationCiblee(texte) };
-    verdicts = controlerCarte(carte, session.memory);
+    verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
     if (toutValide(verdicts)) session.carte = carte;
     else refus = { code: "VERROU", motif: motifsEchec(verdicts).join(" ; ") };
   }

@@ -11,7 +11,11 @@ import {
   motifsEchec,
   paliersSousObjectif,
   toutValide,
-  uneSeuleZoneFidelite,
+  zoneCoherenteAvecLeMode,
+  aucunMelangePointsTampons,
+  uneSeuleFace,
+  aucunQrCode,
+  photoIntegree,
   verrousRespectes,
 } from "../validation/quality.ts";
 import { creerMemoire, poserVerrou } from "../state/sessionMemory.ts";
@@ -78,14 +82,121 @@ test("une carte construite par le moteur passe tous les contrôles", () => {
   assert.equal(toutValide(verdicts), true, motifsEchec(verdicts).join(" | "));
 });
 
-test("deux zones de fidélité sont refusées", () => {
+test("carte à tampons : deux zones de fidélité sont refusées", () => {
   const c = { ...carteValide(), zonesFidelite: ["a", "b"] };
-  assert.equal(uneSeuleZoneFidelite(c).ok, false);
+  assert.equal(zoneCoherenteAvecLeMode(c).ok, false);
 });
 
-test("aucune zone de fidélité est refusé", () => {
+test("carte à tampons : aucune zone est refusé", () => {
   const c = { ...carteValide(), zonesFidelite: [] };
-  assert.equal(uneSeuleZoneFidelite(c).ok, false);
+  assert.equal(zoneCoherenteAvecLeMode(c).ok, false);
+});
+
+/* ------------------------------------- un seul système, une seule face */
+
+test("carte à points : une grille de tampons est refusée", () => {
+  const base = carteValide();
+  const c: Carte = {
+    ...base,
+    zonesFidelite: ["zone-fidelite"],
+    programme: { ...base.programme, mode: "points" },
+  };
+  const v = zoneCoherenteAvecLeMode(c);
+  assert.equal(v.ok, false);
+  assert.match(v.motif, /aucune/);
+});
+
+test("carte à points : aucune grille, c'est correct", () => {
+  const c = construireCarte(
+    creerEtat({
+      secteur: "Institut de beauté",
+      nomCommerce: "Éclat",
+      systemeFidelite: "points",
+      objectif: 20,
+      recompense: { texte: "10 % de réduction", libelleCourt: "-10%" },
+    }),
+  );
+  assert.deepEqual(c.zonesFidelite, []);
+  assert.equal(zoneCoherenteAvecLeMode(c).ok, true);
+});
+
+test("carte à tampons : un compteur de points est refusé", () => {
+  const base = carteValide();
+  const c: Carte = {
+    ...base,
+    calques: [...base.calques, { id: "pts", nom: "Compteur de points", type: "texte" }],
+  };
+  const v = aucunMelangePointsTampons(c);
+  assert.equal(v.ok, false);
+  assert.match(v.motif, /points/);
+});
+
+test("carte à points : une grille de tampons nommée est refusée", () => {
+  const base = carteValide();
+  const c: Carte = {
+    ...base,
+    zonesFidelite: [],
+    programme: { ...base.programme, mode: "points" },
+    calques: [...base.calques, { id: "t", nom: "Grille de tampons", type: "forme" }],
+  };
+  assert.equal(aucunMelangePointsTampons(c).ok, false);
+});
+
+test("un calque de verso est refusé : la carte a une seule face", () => {
+  const base = carteValide();
+  for (const nom of ["Verso", "Dos de la carte", "Face arrière"]) {
+    const c: Carte = { ...base, calques: [...base.calques, { id: "v", nom, type: "texte" }] };
+    assert.equal(uneSeuleFace(c).ok, false, nom);
+  }
+});
+
+test("un code QR sur la carte est refusé", () => {
+  const base = carteValide();
+  const c: Carte = {
+    ...base,
+    calques: [...base.calques, { id: "q", nom: "QR code", type: "image" }],
+  };
+  const v = aucunQrCode(c);
+  assert.equal(v.ok, false);
+  assert.match(v.motif, /QR/);
+});
+
+test("une photo fournie doit apparaître sur la carte", () => {
+  const sansPhoto = carteValide();
+  assert.equal(photoIntegree(sansPhoto, true).ok, false);
+  assert.equal(photoIntegree(sansPhoto, false).ok, true);
+
+  const avecPhoto = construireCarte(
+    creerEtat({
+      secteur: "Fast-food",
+      nomCommerce: "Le Comptoir",
+      systemeFidelite: "stamps",
+      objectif: 10,
+      recompense: { texte: "Un menu offert", libelleCourt: "Offert" },
+      photo: "devanture.jpg",
+    }),
+  );
+  assert.equal(photoIntegree(avecPhoto, true).ok, true);
+});
+
+test("une carte fast-food à tampons ne porte aucun élément de points", () => {
+  // Cas signalé : la démo fast-food affichait « Points : 0 » au-dessus d'une
+  // grille de dix cases. Les deux systèmes ne cohabitent jamais.
+  const c = construireCarte(
+    creerEtat({
+      secteur: "Fast-food",
+      nomCommerce: "Burger Nord",
+      systemeFidelite: "stamps",
+      objectif: 10,
+      recompense: { texte: "Un menu offert", libelleCourt: "Offert" },
+      photo: "interieur.jpg",
+    }),
+  );
+  assert.equal(c.programme.mode, "stamps");
+  assert.equal(c.zonesFidelite.length, 1);
+  assert.ok(!c.calques.some((l) => /point/i.test(l.nom)));
+  const verdicts = controlerCarte(c, creerMemoire(), { photoFournie: true });
+  assert.equal(toutValide(verdicts), true, motifsEchec(verdicts).join(" | "));
 });
 
 test("un calque nommé comme un tampon est refusé", () => {

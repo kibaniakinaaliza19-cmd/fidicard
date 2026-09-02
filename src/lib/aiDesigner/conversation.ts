@@ -76,10 +76,19 @@ export function proposalsFor(
   sector: string,
   toneId: string,
   exclude?: Set<string>,
+  /**
+   * Système demandé par le commerçant, s'il en a exprimé un. On ne propose
+   * alors que des modèles de ce système : appliquer un modèle à tampons puis
+   * forcer le mode « points » donnerait une carte qui affiche une grille ET un
+   * compteur de points. Les deux ne cohabitent jamais.
+   */
+  mode?: "stamps" | "points" | null,
 ): TemplateEntry[] {
   const tone = TONES.find((t) => t.id === toneId) ?? TONES[0];
-  const inSector = templateCatalog.filter((t) => t.sector === sector && t.loyalty);
-  const base = inSector.length >= 3 ? inSector : templateCatalog.filter((t) => t.loyalty);
+  const kind = mode === "points" ? "points" : mode === "stamps" ? "tampons" : null;
+  const compatible = (t: TemplateEntry) => Boolean(t.loyalty) && (!kind || t.loyalty?.mode === kind);
+  const inSector = templateCatalog.filter((t) => t.sector === sector && compatible(t));
+  const base = inSector.length >= 3 ? inSector : templateCatalog.filter(compatible);
   // « Générer d'autres versions » : on écarte les modèles déjà montrés ;
   // si le vivier est épuisé, on repart de zéro.
   let pool = exclude ? base.filter((t) => !exclude.has(t.id)) : base;

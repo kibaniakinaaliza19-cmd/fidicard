@@ -7,7 +7,6 @@ import {
   Type,
   ImagePlus,
   Shapes,
-  QrCode,
   Barcode,
   UploadCloud,
   Palette,
@@ -32,7 +31,6 @@ const rail: { id: DrawerId; label: string; icon: typeof Type }[] = [
   { id: "texte", label: "Texte", icon: Type },
   { id: "images", label: "Images", icon: ImagePlus },
   { id: "formes", label: "Formes", icon: Shapes },
-  { id: "qrcode", label: "QR Code", icon: QrCode },
   { id: "codebarres", label: "Code-barres", icon: Barcode },
   { id: "upload", label: "Upload", icon: UploadCloud },
   { id: "couleurs", label: "Couleurs", icon: Palette },
@@ -75,8 +73,7 @@ export default function LeftRail() {
       {activeDrawer === "texte" && <TextDrawer />}
       {activeDrawer === "images" && <UploadDrawer title="Images" />}
       {activeDrawer === "formes" && <ShapesDrawer />}
-      {activeDrawer === "qrcode" && <CodesDrawer mode="qr" />}
-      {activeDrawer === "codebarres" && <CodesDrawer mode="barcode" />}
+      {activeDrawer === "codebarres" && <CodesDrawer />}
       {activeDrawer === "upload" && <UploadDrawer title="Upload" />}
       {activeDrawer === "couleurs" && <ColorsDrawer />}
       {activeDrawer === "arriereplan" && <BackgroundDrawer />}
