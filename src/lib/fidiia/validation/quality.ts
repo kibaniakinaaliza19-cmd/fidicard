@@ -20,6 +20,19 @@ export interface Verdict {
 const ok = (id: string): Verdict => ({ id, ok: true, motif: "" });
 const ko = (id: string, motif: string): Verdict => ({ id, ok: false, motif });
 
+/**
+ * Normalise un nom de calque avant de le confronter aux motifs interdits.
+ *
+ * Sans ça, tout nom en snake_case passe au travers : `\b` ne s'amorce pas
+ * contre un souligné, qui est un caractère de mot. « points_counter »,
+ * « stamp_grid » et « qr_code » échappaient ainsi à des contrôles écrits
+ * précisément pour eux. Le contrat de carte nomme ces formes : elles doivent
+ * être attrapées, quelle que soit la convention d'écriture du calque.
+ */
+function normaliser(nom: string): string {
+  return nom.replace(/[_\-.·|/\\]+/g, " ");
+}
+
 /** Un calque ne doit jamais porter le nom d'un tampon : la grille est
  *  déclarative, elle n'est pas dessinée calque par calque. */
 const NOM_TAMPON = /^(tampon|icône \d|icone \d|palier)\b/i;
@@ -48,7 +61,7 @@ export function zoneCoherenteAvecLeMode(c: Carte): Verdict {
 
 /** Vocabulaire de l'autre système : le mélange se voit d'abord dans les mots. */
 const MOTS_POINTS = /\bpoints?\b/i;
-const MOTS_TAMPONS = /\btampons?\b|\bcases?\b/i;
+const MOTS_TAMPONS = /\btampons?\b|\bcases?\b|\bstamps?\b/i;
 
 /**
  * Le mélange points + tampons est la faute la plus visible pour le client :
@@ -56,7 +69,7 @@ const MOTS_TAMPONS = /\btampons?\b|\bcases?\b/i;
  * dit pas comment on progresse.
  */
 export function aucunMelangePointsTampons(c: Carte): Verdict {
-  const noms = c.calques.map((l) => l.nom).join(" · ");
+  const noms = c.calques.map((l) => normaliser(l.nom)).join(" · ");
   if (c.programme.mode === "stamps" && MOTS_POINTS.test(noms)) {
     return ko("un-seul-systeme", `carte à tampons, mais un élément parle de points : « ${noms} »`);
   }
@@ -67,10 +80,11 @@ export function aucunMelangePointsTampons(c: Carte): Verdict {
 }
 
 /** Une carte FIDICARD a un recto, et rien d'autre. */
-const NOM_VERSO = /\b(verso|dos|face arrière|face arriere|recto-verso)\b/i;
+const NOM_VERSO =
+  /\b(verso|dos|face arrière|face arriere|recto verso|back|backside|rear|second face|second side)\b/i;
 
 export function uneSeuleFace(c: Carte): Verdict {
-  const fautif = c.calques.find((l) => NOM_VERSO.test(l.nom));
+  const fautif = c.calques.find((l) => NOM_VERSO.test(normaliser(l.nom)));
   return fautif
     ? ko("une-seule-face", `le calque « ${fautif.nom} » suppose un verso`)
     : ok("une-seule-face");
@@ -80,14 +94,14 @@ export function uneSeuleFace(c: Carte): Verdict {
 const NOM_QR = /\bqr\b|qr[- ]?code/i;
 
 export function aucunQrCode(c: Carte): Verdict {
-  const fautif = c.calques.find((l) => NOM_QR.test(l.nom));
+  const fautif = c.calques.find((l) => NOM_QR.test(normaliser(l.nom)));
   return fautif
     ? ko("aucun-qr", `le calque « ${fautif.nom} » place un code QR sur la carte`)
     : ok("aucun-qr");
 }
 
 export function aucunCalqueTampon(c: Carte): Verdict {
-  const fautif = c.calques.find((l) => NOM_TAMPON.test(l.nom));
+  const fautif = c.calques.find((l) => NOM_TAMPON.test(normaliser(l.nom)));
   return fautif
     ? ko("aucun-calque-tampon", `le calque « ${fautif.nom} » dessine un tampon à la main`)
     : ok("aucun-calque-tampon");
