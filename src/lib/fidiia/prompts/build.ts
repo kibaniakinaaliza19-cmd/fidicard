@@ -10,6 +10,7 @@ import type { SessionMemory } from "../state/sessionMemory.ts";
 import { IDENTITY, IDENTITY_VERSION } from "./identity.ts";
 import { GUARDRAILS, GUARDRAILS_VERSION } from "./guardrails.ts";
 import { CONTRACT, CONTRACT_VERSION } from "./contract.ts";
+import { referencesDistinctes, trouverSecteur } from "../corpus/index.ts";
 
 /** Bornes reprises du cahier des charges (gestion du contexte). */
 export const MAX_MESSAGES = 40;
@@ -42,6 +43,24 @@ function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
     "CE QUI TE MANQUE",
     manque.length ? manque.map((m) => `  ${m}`).join("\n") : "  rien : tu peux créer",
   ];
+
+  // Ce que le corpus sait déjà de ce métier. Le modèle n'a plus à inventer une
+  // récompense plausible : il en a trois, écrites à la main pour ce secteur.
+  // Ce sont des EXEMPLES, jamais des données du commerçant — le prompt le dit,
+  // sinon le modèle les recopierait comme des faits.
+  const refs = referencesDistinctes(
+    trouverSecteur(etat.secteur ?? ""),
+    etat.systemeFidelite ?? "stamps",
+  );
+  if (refs.length) {
+    lignes.push(
+      "",
+      `CE QUI MARCHE DANS CE MÉTIER (${refs[0].secteur}) — exemples du corpus`,
+      "  Inspire-t'en pour proposer. Ne les présente jamais comme les données",
+      "  de ce commerçant : ces noms et ces chiffres ne sont pas les siens.",
+      ...refs.map((r) => `  ${r.objectif} → ${r.recompense}`),
+    );
+  }
 
   if (memory.preferences.length) {
     lignes.push("", "PRÉFÉRENCES DU COMMERÇANT", ...memory.preferences.map((p) => `  ${p}`));

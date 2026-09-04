@@ -24,6 +24,7 @@ import {
 import type { Action, Carte, Cible } from "./validation/schemas.ts";
 import { validerAction } from "./validation/schemas.ts";
 import { controlerCarte, motifsEchec, toutValide, type Verdict } from "./validation/quality.ts";
+import { suggestionPour, trouverSecteur } from "./corpus/index.ts";
 
 export const MAX_APPELS_PAR_MESSAGE = 2;
 
@@ -84,9 +85,22 @@ export function creerSession(
  * construction.
  */
 export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[] = []): Carte {
-  const objectif = etat.objectif ?? 10;
   const mode = etat.systemeFidelite ?? "stamps";
-  const recompense = etat.recompense ?? { texte: "Une prestation offerte", libelleCourt: "Offert" };
+
+  // Le corpus avant l'invention. 864 modèles écrits secteur par secteur : pour
+  // un fast-food, il sait dire « Le 8ᵉ tacos offert » là où un défaut générique
+  // dirait « Une prestation offerte ». Une suggestion du corpus ne s'impose
+  // jamais : elle ne sert que si le commerçant n'a rien dit.
+  const suggestion = suggestionPour(trouverSecteur(etat.secteur ?? ""), mode);
+
+  const objectif = etat.objectif ?? suggestion?.objectif ?? 10;
+  const recompense =
+    etat.recompense ??
+    // On ne reprend la récompense du corpus que si l'objectif vient du corpus
+    // aussi. Greffer « Le 10ᵉ café offert » sur un objectif de 6 donnerait une
+    // carte qui se contredit elle-même.
+    (etat.objectif === undefined ? suggestion?.recompense : undefined) ??
+    { texte: "Une prestation offerte", libelleCourt: "Offert" };
   const paliersExistants = (etat.paliers ?? []).filter((p) => p.position < objectif);
 
   // Un seul système par carte. En mode points, aucune zone de tampons n'est
