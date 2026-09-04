@@ -7,13 +7,45 @@
 # La cle n'est jamais affichee a l'ecran ni enregistree dans l'historique
 # PowerShell : elle est saisie masquee. .env.local est gitignore.
 #
-#   Utilisation :  .\scripts\fidiia-setup.ps1
+#   Utilisation courante :
+#       .\scripts\fidiia-setup.ps1
+#
+#   Lister les modeles et s'arreter la (ne demande aucun choix) :
+#       .\scripts\fidiia-setup.ps1 -ListerSeulement
+#
+#   Tout configurer sans aucune question, le modele etant deja connu :
+#       .\scripts\fidiia-setup.ps1 -Modele "identifiant-exact"
+#
+# La cle peut etre fournie a l'avance, ce qui evite toute saisie :
+#       $env:OPENAI_API_KEY = "..."
+#   C'est ce qui permet a un agent d'executer le script : il n'a pas de
+#   terminal interactif, donc il ne peut pas repondre a un Read-Host.
 #
 # Si Windows refuse d'executer le script :
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 #Requires -Version 5.1
+
+[CmdletBinding()]
+param(
+    # Identifiant EXACT du modele. Fourni ici, aucune question n'est posee.
+    [string]$Modele,
+
+    # Affiche la liste des modeles accessibles, puis s'arrete. N'ecrit rien.
+    [switch]$ListerSeulement
+)
+
 $ErrorActionPreference = "Stop"
+
+# Peut-on poser une question a quelqu'un ?
+#
+# UserInteractive seul ne suffit pas : il reste vrai quand un agent lance
+# powershell -Command ... sans terminal. On regarde aussi si l'entree
+# standard est redirigee, ce qui est le cas typique d'un appel automatise.
+function Test-PeutDemander {
+    if ([Console]::IsInputRedirected) { return $false }
+    return [Environment]::UserInteractive
+}
 
 # On se place a la racine du projet, quel que soit le dossier courant.
 $racine = Split-Path -Parent $PSScriptRoot
@@ -43,10 +75,29 @@ if (-not (Test-Path "node_modules")) {
 
 # --- la cle -----------------------------------------------------------------
 
-$secure = Read-Host "Votre cle OpenAI (saisie masquee)" -AsSecureString
-$cle = [System.Net.NetworkCredential]::new("", $secure).Password
+# Deja dans l'environnement ? On ne redemande rien. C'est ce qui permet a un
+# agent sans terminal d'executer ce script : la cle est posee une fois a la
+# main, le reste s'enchaine tout seul.
+$cle = $env:OPENAI_API_KEY
 
-if ([string]::IsNullOrWhiteSpace($cle)) { throw "Aucune cle saisie." }
+if ([string]::IsNullOrWhiteSpace($cle)) {
+    # Read-Host exige un vrai terminal. Sans lui, mieux vaut une erreur claire
+    # qu'un script qui reste bloque sur une invite que personne ne verra.
+    if (-not (Test-PeutDemander)) {
+        throw @"
+Aucune cle disponible et aucun terminal interactif.
+Posez la cle avant d'appeler ce script :
+    `$s = Read-Host "Cle OpenAI" -AsSecureString
+    `$env:OPENAI_API_KEY = [System.Net.NetworkCredential]::new("", `$s).Password
+puis relancez.
+"@
+    }
+    $secure = Read-Host "Votre cle OpenAI (saisie masquee)" -AsSecureString
+    $cle = [System.Net.NetworkCredential]::new("", $secure).Password
+    if ([string]::IsNullOrWhiteSpace($cle)) { throw "Aucune cle saisie." }
+} else {
+    Write-Host "Cle reprise depuis OPENAI_API_KEY." -ForegroundColor DarkGray
+}
 
 # Pour cette session PowerShell uniquement : rien n'est encore ecrit sur le
 # disque. Si vous fermez la fenetre maintenant, il ne reste aucune trace.
@@ -60,13 +111,28 @@ if ($LASTEXITCODE -ne 0) { throw "L'appel a echoue. Cle invalide, ou pas d'acces
 
 # --- 2. choisir ------------------------------------------------------------
 
-Write-Host ""
-$modele = Read-Host "Identifiant EXACT du modele a utiliser (copie depuis la liste ci-dessus)"
-if ([string]::IsNullOrWhiteSpace($modele)) {
-    Write-Host "Aucun modele choisi. Rien n'a ete ecrit." -ForegroundColor Yellow
+if ($ListerSeulement) {
+    Write-Host "`n-ListerSeulement : rien n'a ete ecrit sur le disque." -ForegroundColor Yellow
+    Write-Host "Choisissez un identifiant ci-dessus, puis relancez :" -ForegroundColor DarkGray
+    Write-Host "    .\scripts\fidiia-setup.ps1 -Modele `"<identifiant>`"" -ForegroundColor DarkGray
     return
 }
-$modele = $modele.Trim()
+
+if (-not [string]::IsNullOrWhiteSpace($Modele)) {
+    $modele = $Modele.Trim()
+    Write-Host "`nModele impose en parametre : $modele" -ForegroundColor DarkGray
+} else {
+    if (-not (Test-PeutDemander)) {
+        throw "Aucun terminal interactif. Relancez avec -Modele `"<identifiant>`" ou -ListerSeulement."
+    }
+    Write-Host ""
+    $modele = Read-Host "Identifiant EXACT du modele a utiliser (copie depuis la liste ci-dessus)"
+    if ([string]::IsNullOrWhiteSpace($modele)) {
+        Write-Host "Aucun modele choisi. Rien n'a ete ecrit." -ForegroundColor Yellow
+        return
+    }
+    $modele = $modele.Trim()
+}
 
 # --- 3. ecrire .env.local ---------------------------------------------------
 
