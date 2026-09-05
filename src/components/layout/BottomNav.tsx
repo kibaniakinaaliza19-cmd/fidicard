@@ -28,7 +28,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-50 flex md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 flex items-end md:hidden"
       style={{
         background: "var(--bg-elevated)",
         borderTop: "1px solid var(--border)",
@@ -45,26 +45,48 @@ export default function BottomNav() {
             : pathname?.startsWith(item.href);
         const Icone = item.icon;
 
+        const central = "central" in item && item.central;
+
+        // Le bouton central déborde vers le haut plutôt que de tenir dans la
+        // rangée : à l'intérieur, la pastille de 44 px poussait son libellé
+        // hors de la barre, et « Scanner » se retrouvait coupé par le bord de
+        // l'écran. Débordant, il ne prend la place de personne, et sa forme
+        // suffit à le nommer — l'icône de scan est la seule ronde et pleine.
+        if (central) {
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-label={item.label}
+              aria-current={actif ? "page" : undefined}
+              className="flex flex-1 flex-col items-center justify-end"
+              style={{ minHeight: 60 }}
+            >
+              <span
+                className="mb-2 grid h-14 w-14 -translate-y-3 place-items-center rounded-full"
+                style={{
+                  background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))",
+                  boxShadow: "0 8px 20px -6px var(--accent-glow)",
+                  border: "3px solid var(--bg-elevated)",
+                }}
+              >
+                <Icone size={24} color="#fff" />
+              </span>
+            </Link>
+          );
+        }
+
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={actif ? "page" : undefined}
-            // 56 px de haut : au-dessus des 44 px minimum, parce qu'on vise
+            // 60 px de haut : au-dessus des 44 px minimum, parce qu'on vise
             // en marchant et sans regarder.
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2"
-            style={{ minHeight: 56, color: actif ? "var(--accent-1)" : "var(--text-dim)" }}
+            style={{ minHeight: 60, color: actif ? "var(--accent-1)" : "var(--text-dim)" }}
           >
-            {"central" in item && item.central ? (
-              <span
-                className="grid h-11 w-11 place-items-center rounded-2xl"
-                style={{ background: "var(--accent-1)" }}
-              >
-                <Icone size={22} color="#fff" />
-              </span>
-            ) : (
-              <Icone size={21} />
-            )}
+            <Icone size={21} />
             <span className="text-[11px] font-medium leading-none">{item.label}</span>
           </Link>
         );

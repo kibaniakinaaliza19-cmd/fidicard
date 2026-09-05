@@ -22,9 +22,9 @@ export default function AccueilPage() {
           {/* Trois tuiles côte à côte tronquent leurs libellés sur mobile.
               Deux tiennent, la troisième passe dessous. */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-            <StatCardGlow label="Clients actifs" value={312} delta="+8%" icon={Users} color="#a78bfa" />
-            <StatCardGlow label="Tampons distribués" value={1847} delta="+15%" icon={Stamp} color="#e0342c" />
-            <StatCardGlow label="Récompenses débloquées" value={89} delta="+5%" icon={Gift} color="#f0653e" />
+            <StatCardGlow label="Clients actifs" value={312} delta="+8%" icon={Users} />
+            <StatCardGlow label="Tampons distribués" value={1847} delta="+15%" icon={Stamp} />
+            <StatCardGlow label="Récompenses débloquées" value={89} delta="+5%" icon={Gift} large />
           </div>
 
           <VisitsChart />

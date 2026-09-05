@@ -50,15 +50,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    /* Fond plat, sans halo.
+     *
+     * Deux voiles orange de 400 px couvraient auparavant toute la fenêtre. Sur
+     * un écran de téléphone, ils ne restaient pas décoratifs : ils repeignaient
+     * le fond des pages en brun, les cartes sombres cessaient de s'en détacher,
+     * et le texte secondaire passait sous le seuil de contraste. L'orange n'est
+     * plus une ambiance, il ne sert plus qu'à désigner — le chiffre du mois,
+     * l'action principale, l'onglet actif.
+     */
     <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
-      <div
-        className="glow-blob left-[-10%] top-[-10%] h-[420px] w-[420px]"
-        style={{ background: "var(--accent-2)" }}
-      />
-      <div
-        className="glow-blob bottom-[-15%] right-[-5%] h-[520px] w-[520px]"
-        style={{ background: "var(--accent-1)" }}
-      />
       <Sidebar />
       <main
         className="relative z-10 flex-1 overflow-y-auto"

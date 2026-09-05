@@ -82,7 +82,28 @@ export default function VisitsChart() {
         </div>
       </div>
 
-      <div className="relative">
+      {/* Échelle verticale.
+          Une courbe sans graduation ne se lit pas : on voit qu'elle monte,
+          jamais de combien. Les libellés sont en HTML et non dans le SVG,
+          qui est étiré horizontalement (preserveAspectRatio="none") et
+          déformerait les caractères. */}
+      <div className="relative pl-8">
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 w-8 text-[10px]"
+          style={{ color: "var(--text-faint)" }}
+          aria-hidden
+        >
+          {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+            <span
+              key={f}
+              className="absolute right-1.5 -translate-y-1/2 tabular-nums"
+              style={{ top: PADDING_TOP + plotHeight * f }}
+            >
+              {Math.round(niceMax * (1 - f))}
+            </span>
+          ))}
+        </div>
+
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full" style={{ height: 220 }} preserveAspectRatio="none">
           <defs>
             <linearGradient id="visitsFill" x1="0" y1="0" x2="0" y2="1">
@@ -95,7 +116,7 @@ export default function VisitsChart() {
             </linearGradient>
           </defs>
 
-          {[0.25, 0.5, 0.75].map((f) => (
+          {[0, 0.25, 0.5, 0.75, 1].map((f) => (
             <line
               key={f}
               x1={0}

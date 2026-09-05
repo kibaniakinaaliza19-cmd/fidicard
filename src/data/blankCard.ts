@@ -21,13 +21,21 @@ export function createBlankCard(): CardDoc {
       image: null,
       imageDim: 30,
     },
+    /* Trois bandes qui ne se recouvrent pas.
+     *
+     * La grille de dix tampons occupe la bande 46 → 76,9 : deux rangées de
+     * 9 × 1,55 plus l'interligne (voir createDefaultStampGridZone et
+     * STAMP_HEIGHT_RATIO). Le slogan démarrait à 46 et la ligne de récompense
+     * à 74 : les deux passaient sous les tampons, et l'aperçu de l'accueil
+     * montrait des cercles posés en travers du texte. Le texte tient
+     * désormais au-dessus (18 → 42) et en dessous (80 → 88). */
     layers: [
       createTextLayer(1, {
         id: makeId("business-name"),
         name: "Nom du commerce",
         content: "MON ENTREPRISE",
         x: 8,
-        y: 30,
+        y: 18,
         width: 60,
         height: 12,
         fontSize: 22,
@@ -39,7 +47,7 @@ export function createBlankCard(): CardDoc {
         name: "Slogan",
         content: "Fidélisez vos clients",
         x: 8,
-        y: 46,
+        y: 34,
         width: 60,
         height: 8,
         fontSize: 11,
@@ -51,7 +59,7 @@ export function createBlankCard(): CardDoc {
         name: "Récompense",
         content: "Une boisson offerte à la 10ᵉ visite",
         x: 8,
-        y: 74,
+        y: 80,
         width: 62,
         height: 8,
         fontSize: 10,

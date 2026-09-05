@@ -13,6 +13,15 @@
   --accent-1: #ff6a3d;
   --accent-2: #e0342c;
   --accent-glow: rgba(240, 101, 62, 0.35);
+
+  /* Le point le plus sombre de la rampe orange où du texte blanc de taille
+     normale passe encore le contraste AA (4,89:1). Toute surface pleine qui
+     porte du texte blanc démarre ici, jamais à --accent-1 : blanc sur
+     #ff6a3d ne donne que 2,84:1, illisible en plein soleil au comptoir. */
+  --accent-deep: #d62f27;
+
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.15);
 }
 
 [data-theme="light"] {
@@ -28,6 +37,11 @@
   --accent-1: #ff6a3d;
   --accent-2: #e0342c;
   --accent-glow: rgba(240, 101, 62, 0.18);
+  --accent-deep: #d62f27;
+
+  /* Le vert clair du thème sombre tombe à 1,9:1 sur fond blanc. */
+  --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.12);
 }
 
 @theme inline {
