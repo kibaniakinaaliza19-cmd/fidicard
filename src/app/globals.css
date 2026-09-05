@@ -135,3 +135,84 @@ body {
 .float-slow {
   animation: float-slow 6s ease-in-out infinite;
 }
+
+/* ------------------------------------------------------- ergonomie mobile */
+/* Ce bloc fait la différence entre « un site ouvert en plein écran » et
+   « une application ». Chaque règle corrige un détail qui trahit le web. */
+
+/* Le rebond élastique en fin de scroll est LE signe qui trahit un site
+   déguisé en application. On le coupe, sans toucher au scroll lui-même. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Une application ne se sélectionne pas au doigt comme un article. Les
+   champs de saisie et le contenu éditable gardent la sélection, eux. */
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"],
+  nav {
+    -webkit-user-select: none;
+    user-select: none;
+    /* Supprime le rectangle gris au tap sur Android. */
+    -webkit-tap-highlight-color: transparent;
+    /* Le double-tap ne zoome plus sur une cible actionnable : on visait un
+       bouton, pas un agrandissement. */
+    touch-action: manipulation;
+  }
+
+  /* Seuil tactile. 44 px est le minimum au-dessous duquel un doigt rate. */
+  button,
+  a[role="button"],
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 44px;
+  }
+}
+
+/* Sous l'encoche et au-dessus de la barre gestuelle. */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Une fois installée, l'application n'a plus de barre d'adresse : 100vh ment
+   sur iOS, 100dvh dit la vérité. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    height: 100dvh;
+  }
+}
+
+/* Un tableau reste un tableau sur un grand écran ; sous 400 px il devient
+   une pile de cartes, sinon il déborde ou devient illisible. */
+@media (max-width: 640px) {
+  .table-auto-stack thead {
+    display: none;
+  }
+  .table-auto-stack tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+  }
+  .table-auto-stack td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border: 0;
+  }
+  .table-auto-stack td::before {
+    content: attr(data-libelle);
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+}

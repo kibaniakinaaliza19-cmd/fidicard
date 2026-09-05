@@ -1,14 +1,23 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
+import BottomNav from "@/components/layout/BottomNav";
 import Toaster from "@/components/ui/Toaster";
-import FidiAI from "@/components/editor/FidiAI";
+import PublishModal from "@/components/editor/PublishModal";
+import WalletPreviewModal from "@/components/editor/WalletPreviewModal";
 import { useUIStore } from "@/store/uiStore";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
+  const pathname = usePathname();
+  // seul l'éditeur avancé est plein écran ; le Designer IA garde la sidebar
+  // Plein écran : l'éditeur avancé, et le scanner qui occupe toute la vitre.
+  const fullBleed =
+    pathname?.startsWith("/carte/editeur") || pathname?.startsWith("/scanner/camera");
+  const publicPage = pathname?.startsWith("/join");
 
   useEffect(() => {
     const current = document.documentElement.getAttribute("data-theme");
@@ -24,6 +33,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [theme]);
 
+  // Public, chrome-less pages (client QR signup) — no sidebar, no dashboard modals.
+  if (publicPage) {
+    return <>{children}</>;
+  }
+
+  if (fullBleed) {
+    return (
+      <div className="h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
+        {children}
+        <Toaster />
+        <PublishModal />
+        <WalletPreviewModal />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
       <div
@@ -35,9 +60,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         style={{ background: "var(--accent-1)" }}
       />
       <Sidebar />
-      <main className="relative z-10 flex-1 overflow-y-auto">{children}</main>
+      <main
+        className="relative z-10 flex-1 overflow-y-auto"
+        // La navigation basse recouvre le bas de l'écran sur mobile : sans
+        // cette réserve, le dernier élément de chaque page est inatteignable.
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)" }}
+      >
+        {children}
+      </main>
+      <BottomNav />
       <Toaster />
-      <FidiAI />
+      <PublishModal />
+      <WalletPreviewModal />
     </div>
   );
 }
