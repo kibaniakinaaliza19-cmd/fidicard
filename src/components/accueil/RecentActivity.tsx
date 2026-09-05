@@ -16,7 +16,7 @@ export default function RecentActivity() {
       className="rounded-2xl border p-5"
       style={{ background: "var(--panel)", borderColor: "var(--border)" }}
     >
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>
           Activité récente
         </h2>

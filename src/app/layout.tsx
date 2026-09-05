@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Geist,
   Geist_Mono,
@@ -13,6 +13,8 @@ import {
 import Script from "next/script";
 import "./globals.css";
 import AppShell from "@/components/layout/AppShell";
+import ServiceWorkerRegistration from "@/components/pwa/ServiceWorkerRegistration";
+import InstallPrompt from "@/components/pwa/InstallPrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,6 +41,37 @@ const editorFontVars = [poppins, montserrat, playfair, lato, roboto, openSans, g
 export const metadata: Metadata = {
   title: "FidiCard Studio",
   description: "Créez et personnalisez vos cartes de fidélité digitales.",
+  applicationName: "FidiCard",
+  manifest: "/manifest.webmanifest",
+  // Sans ces trois-là, l'installation depuis iOS est dégradée : icône
+  // générique, barre de navigateur conservée, pas de plein écran.
+  appleWebApp: {
+    capable: true,
+    title: "FidiCard",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  formatDetection: {
+    // iOS transforme spontanément les nombres en liens d'appel. Un compteur
+    // « 7/10 » devenu bouton téléphone, c'est un scan perdu.
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2B1E1A",
+  width: "device-width",
+  initialScale: 1,
+  // L'application occupe l'écran jusque sous l'encoche et la barre gestuelle.
+  // Les marges de sécurité sont reprises en CSS avec env(safe-area-inset-*).
+  viewportFit: "cover",
+  // Le double-tap qui zoome transforme un bouton manqué en page de travers.
+  // On garde le pincement, qui reste un besoin d'accessibilité réel.
+  maximumScale: 5,
+  userScalable: true,
 };
 
 const themeInitScript = `
@@ -65,7 +98,9 @@ export default function RootLayout({
         <Script id="theme-init" strategy="beforeInteractive">
           {themeInitScript}
         </Script>
+        <ServiceWorkerRegistration />
         <AppShell>{children}</AppShell>
+        <InstallPrompt />
       </body>
     </html>
   );

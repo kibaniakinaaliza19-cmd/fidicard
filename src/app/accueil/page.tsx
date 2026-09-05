@@ -13,11 +13,15 @@ export default function AccueilPage() {
   return (
     <div>
       <AccueilHeader />
-      <div className="grid grid-cols-3 gap-5 px-8 pb-10">
-        <div className="col-span-2 space-y-5">
+      {/* Une seule colonne sous lg : à 400 px, deux colonnes réduisent chaque
+          bloc à une largeur où les mots se coupent un par ligne. */}
+      <div className="grid grid-cols-1 gap-5 px-4 pb-10 sm:px-6 lg:grid-cols-3 lg:px-8">
+        <div className="space-y-5 lg:col-span-2">
           <ImpactHero />
 
-          <div className="grid grid-cols-3 gap-4">
+          {/* Trois tuiles côte à côte tronquent leurs libellés sur mobile.
+              Deux tiennent, la troisième passe dessous. */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
             <StatCardGlow label="Clients actifs" value={312} delta="+8%" icon={Users} color="#a78bfa" />
             <StatCardGlow label="Tampons distribués" value={1847} delta="+15%" icon={Stamp} color="#e0342c" />
             <StatCardGlow label="Récompenses débloquées" value={89} delta="+5%" icon={Gift} color="#f0653e" />

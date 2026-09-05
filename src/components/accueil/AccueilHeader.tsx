@@ -8,7 +8,7 @@ export default function AccueilHeader() {
   const pushToast = useUIStore((s) => s.pushToast);
 
   return (
-    <header className="flex items-start justify-between px-8 pb-6 pt-8">
+    <header className="flex flex-col gap-4 px-4 pb-6 pt-8 sm:px-6 md:flex-row md:items-start md:justify-between lg:px-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text)" }}>
           Bonjour, Café Madeleine <span className="inline-block">👋</span>

@@ -17,7 +17,7 @@ import {
   PartyPopper,
   RefreshCw,
   Smartphone,
-  Radio,
+  ScanLine,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import ScanSimulator from "@/components/scanner/ScanSimulator";
@@ -26,7 +26,6 @@ import { usePublishHydration, useCardCreated } from "@/lib/usePublish";
 import { getConfigSteps, configProgress } from "@/lib/configSteps";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
-import { usePlan } from "@/lib/usePlan";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { validerProgramme } from "@/lib/loyalty";
 
@@ -59,7 +58,6 @@ function downloadQrPng(svg: SVGSVGElement | null, filename: string, onDone: () =
 
 export default function ScannerPage() {
   usePublishHydration();
-  const { plan } = usePlan();
   const published = usePublishStore((s) => s.published);
   const publish = usePublishStore((s) => s.publish);
   const unpublish = usePublishStore((s) => s.unpublish);
@@ -115,36 +113,33 @@ export default function ScannerPage() {
           style={{ borderColor: "var(--border-strong)", background: "var(--panel-soft)", color: "var(--text-dim)" }}
         >
           <Info size={14} className="text-[var(--accent-1)]" />
-          Le NFC deviendra le système principal ; le QR Code reste la solution alternative. L&rsquo;inscription client
-          fonctionne en démo — la synchronisation Wallet arrive dans une prochaine brique.
+          Ce QR sert à l&rsquo;inscription en caisse. Sur la carte du client, c&rsquo;est un
+          code-barres qui est scanné. L&rsquo;inscription fonctionne en démo — la
+          synchronisation Wallet arrive dans une prochaine brique.
         </div>
 
-        {/* scan mode by plan */}
+        {/* mode de scan */}
         <div
           className="mb-6 flex items-center gap-3 rounded-2xl border px-4 py-3.5"
           style={{ borderColor: "var(--border)", background: "var(--panel)" }}
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--accent-glow)" }}>
-            {plan === "starter" ? <Smartphone size={18} className="text-[var(--accent-1)]" /> : <Radio size={18} className="text-[var(--accent-1)]" />}
+            <Smartphone size={18} className="text-[var(--accent-1)]" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
-              {plan === "starter" ? "Mode de scan : téléphone du commerçant" : "Mode de scan : lecteur NFC"}
+              Mode de scan : téléphone du commerçant
             </p>
-            <p className="truncate text-xs" style={{ color: "var(--text-faint)" }}>
-              {plan === "starter"
-                ? "Le plan Starter utilise l'appareil photo de votre téléphone — aucun matériel NFC requis."
-                : "Un lecteur NFC associé à votre compte remplace le téléphone (préparation — le scanner caméra reste disponible en secours)."}
+            <p className="text-xs" style={{ color: "var(--text-faint)" }}>
+              L&rsquo;appareil photo de votre téléphone suffit. Aucun matériel dédié.
             </p>
           </div>
-          {plan === "starter" && (
-            <span
-              className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-              style={{ background: "rgba(245,245,244,0.08)", color: "var(--text-faint)" }}
-            >
-              Scan caméra bientôt
-            </span>
-          )}
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            style={{ background: "var(--accent-glow)", color: "var(--accent-1)" }}
+          >
+            Disponible
+          </span>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
@@ -295,6 +290,29 @@ export default function ScannerPage() {
                 transition={{ duration: 0.25 }}
                 className="space-y-6"
               >
+                {/* Le vrai scan, avec la caméra du téléphone. Le simulateur
+                    ci-dessous reste pour tester depuis un ordinateur. */}
+                <Link
+                  href="/scanner/camera"
+                  className="flex items-center gap-4 rounded-3xl border p-5 transition-colors"
+                  style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+                >
+                  <span
+                    className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl"
+                    style={{ background: "var(--accent-1)" }}
+                  >
+                    <ScanLine size={22} color="#fff" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-semibold" style={{ color: "var(--text)" }}>
+                      Scanner avec la caméra
+                    </span>
+                    <span className="block text-sm" style={{ color: "var(--text-dim)" }}>
+                      Encaisser un passage au comptoir, à une main.
+                    </span>
+                  </span>
+                </Link>
+
                 {/* le scan applique désormais les règles du programme */}
                 <ScanSimulator />
 

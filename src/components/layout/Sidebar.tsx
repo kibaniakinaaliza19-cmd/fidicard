@@ -33,7 +33,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r px-4 py-6"
+      className="relative z-20 hidden h-full w-[260px] shrink-0 flex-col border-r px-4 py-6 md:flex"
       style={{ background: "var(--panel)", borderColor: "var(--border)" }}
     >
       <Link href="/accueil" className="mb-8 flex items-center gap-2.5 px-2">
