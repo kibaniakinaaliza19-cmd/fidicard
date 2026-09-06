@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
+import MobileHeader from "@/components/layout/MobileHeader";
 import BottomNav from "@/components/layout/BottomNav";
 import Toaster from "@/components/ui/Toaster";
 import PublishModal from "@/components/editor/PublishModal";
@@ -50,23 +51,39 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    /* Fond plat, sans halo.
-     *
-     * Deux voiles orange de 400 px couvraient auparavant toute la fenêtre. Sur
-     * un écran de téléphone, ils ne restaient pas décoratifs : ils repeignaient
-     * le fond des pages en brun, les cartes sombres cessaient de s'en détacher,
-     * et le texte secondaire passait sous le seuil de contraste. L'orange n'est
-     * plus une ambiance, il ne sert plus qu'à désigner — le chiffre du mois,
-     * l'action principale, l'onglet actif.
-     */
-    <div className="relative flex h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
+    <div
+      className="relative flex h-screen w-screen overflow-hidden"
+      style={{ background: "var(--surface-0)" }}
+    >
+      {/* Profondeur du fond.
+       *
+       * Deux voiles orange de 400 px couvraient auparavant toute la fenêtre et
+       * repeignaient les pages en brun : les cartes cessaient de s'en détacher
+       * et le texte secondaire passait sous le seuil de contraste. Ce qui reste
+       * est d'un ordre de grandeur plus faible (0,05 contre 0,5 d'opacité) et
+       * ancré dans les angles. On ne doit pas se dire « tiens, un dégradé » —
+       * seulement sentir que le fond n'est pas une surface morte. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+        style={{
+          background:
+            "radial-gradient(60% 40% at 100% 0%, rgba(255,90,31,0.05), transparent 60%)," +
+            "radial-gradient(50% 35% at 0% 100%, rgba(255,90,31,0.035), transparent 60%)",
+        }}
+      />
+
       <Sidebar />
       <main
-        className="relative z-10 flex-1 overflow-y-auto"
-        // La navigation basse recouvre le bas de l'écran sur mobile : sans
-        // cette réserve, le dernier élément de chaque page est inatteignable.
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)" }}
+        className="relative flex-1 overflow-y-auto"
+        style={{
+          zIndex: "var(--z-content)",
+          // La navigation basse recouvre le bas de l'écran sur mobile : sans
+          // cette réserve, le dernier élément de chaque page est inatteignable.
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 5rem)",
+        }}
       >
+        <MobileHeader />
         {children}
       </main>
       <BottomNav />

@@ -22,11 +22,21 @@ export default function LoyaltyCardPreview() {
 
   return (
     <div
-      className="rounded-2xl border p-5"
-      style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+      className="border p-5"
+      style={{
+        background: "var(--surface-1)",
+        borderColor: "var(--border)",
+        borderRadius: "var(--radius-lg)",
+      }}
     >
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+        {/* Même graisse, même casse, même couleur que « Activité en temps réel »
+            et « Évolution des visites » : trois titres de section dans une
+            page ne peuvent pas avoir trois styles. */}
+        <h2
+          className="text-[11px] font-semibold uppercase tracking-[0.08em]"
+          style={{ color: "var(--text-dim)" }}
+        >
           Ma carte de fidélité
         </h2>
         <div className="relative">

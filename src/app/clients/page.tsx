@@ -42,7 +42,10 @@ export default function ClientsPage() {
       <PageHeader title="Clients" subtitle="Suivez la fidélité de vos clients en un coup d'œil" />
       <div className="px-4 pb-10 sm:px-6 lg:px-8">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex flex-1 items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--border-strong)", background: "var(--panel)" }}>
+          <div
+            className="champ flex flex-1 items-center gap-2"
+            style={{ height: 48, paddingLeft: "var(--space-3)", paddingRight: "var(--space-3)" }}
+          >
             <Search size={15} style={{ color: "var(--text-faint)" }} />
             <input
               value={query}
@@ -52,7 +55,16 @@ export default function ClientsPage() {
               style={{ color: "var(--text)" }}
             />
           </div>
-          <span className="shrink-0 rounded-xl border px-4 py-2.5 text-sm" style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}>
+          <span
+            className="grid shrink-0 place-items-center px-4 text-sm"
+            style={{
+              height: 48,
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--text-dim)",
+            }}
+          >
             <span className="font-semibold" style={{ color: "var(--text)" }}>{allClients.length}</span> clients
           </span>
         </div>
@@ -65,14 +77,18 @@ export default function ClientsPage() {
          * inatteignables, même en faisant glisser. Sur téléphone, chaque
          * client devient donc une ligne qui porte son compteur. */}
         <ul
-          className="divide-y overflow-hidden rounded-2xl border md:hidden"
-          style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+          className="divide-y overflow-hidden border md:hidden"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-1)",
+            borderRadius: "var(--radius-lg)",
+          }}
         >
           {filtered.map((c) => (
             <li key={c.id} className="flex items-center gap-3 px-4 py-3.5">
               <span
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
-                style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
+                style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
               >
                 {c.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?"}
               </span>
@@ -88,7 +104,7 @@ export default function ClientsPage() {
 
               <span
                 className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums"
-                style={{ background: "var(--accent-glow)", color: "var(--accent-1)" }}
+                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
               >
                 {c.stamps} <span className="font-normal">{c.stamps > 1 ? "tampons" : "tampon"}</span>
               </span>
@@ -102,12 +118,16 @@ export default function ClientsPage() {
         </ul>
 
         <div
-          className="hidden overflow-hidden rounded-2xl border md:block"
-          style={{ borderColor: "var(--border)", background: "var(--panel)" }}
+          className="hidden overflow-hidden border md:block"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-1)",
+            borderRadius: "var(--radius-lg)",
+          }}
         >
           <table className="w-full text-left text-sm">
             <thead>
-              <tr style={{ background: "var(--panel-soft)" }}>
+              <tr style={{ background: "var(--surface-2)" }}>
                 {["Client", "Téléphone", "Tampons", "Points", "Inscrit le", "Dernière visite"].map((h) => (
                   <th key={h} className="px-5 py-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
                     {h}
@@ -117,12 +137,12 @@ export default function ClientsPage() {
             </thead>
             <tbody>
               {filtered.map((c) => (
-                <tr key={c.id} className="border-t transition-colors hover:bg-[var(--panel-soft)]" style={{ borderColor: "var(--border)" }}>
+                <tr key={c.id} className="border-t transition-colors hover:bg-[var(--surface-4)]" style={{ borderColor: "var(--border)" }}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <span
                         className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white"
-                        style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
+                        style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
                       >
                         {c.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?"}
                       </span>
@@ -130,7 +150,10 @@ export default function ClientsPage() {
                         <p className="flex items-center gap-2 font-medium" style={{ color: "var(--text)" }}>
                           {c.name || "Sans nom"}
                           {c.isNew && (
-                            <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(76,175,125,0.15)", color: "#4CAF7D" }}>
+                            <span
+                              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                              style={{ background: "var(--success-soft)", color: "var(--success)" }}
+                            >
                               <Sparkles size={9} /> Nouveau · Carte active
                             </span>
                           )}

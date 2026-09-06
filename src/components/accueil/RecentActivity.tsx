@@ -1,68 +1,113 @@
 "use client";
 
 import Link from "next/link";
-import { Stamp, Gift, ScanLine } from "lucide-react";
+import { Stamp, Gift, ScanLine, UserPlus, ChevronRight } from "lucide-react";
 import { recentActivity, type ActivityKind } from "@/data/activity";
 
-const kindIcon: Record<ActivityKind, typeof Stamp> = {
+const ICONE: Record<ActivityKind, typeof Stamp> = {
   stamp: Stamp,
   reward: Gift,
   scan: ScanLine,
+  signup: UserPlus,
 };
 
+/** Au-delà d'un quart d'heure, ce n'est plus « en direct », c'est de l'historique. */
+const SEUIL_DIRECT = 15;
+
+/**
+ * Activité en temps réel.
+ *
+ * Le point qui pulse n'est pas une décoration : il ne s'allume que sur les
+ * événements de moins d'un quart d'heure. Un indicateur « live » allumé en
+ * permanence ne veut plus rien dire, et le commerçant cesse de le regarder au
+ * bout d'une journée.
+ */
 export default function RecentActivity() {
+  const enDirect = recentActivity.some((a) => a.minutes <= SEUIL_DIRECT);
+
   return (
-    <div
-      className="rounded-2xl border p-5"
-      style={{ background: "var(--panel)", borderColor: "var(--border)" }}
+    <section
+      style={{
+        background: "var(--surface-1)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-5)",
+      }}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>
-          Activité récente
+        <h2
+          className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]"
+          style={{ color: "var(--text-dim)" }}
+        >
+          {enDirect && (
+            <span className="relative flex h-1.5 w-1.5" aria-hidden>
+              <span
+                className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+                style={{ background: "var(--success)" }}
+              />
+              <span
+                className="relative inline-flex h-1.5 w-1.5 rounded-full"
+                style={{ background: "var(--success)" }}
+              />
+            </span>
+          )}
+          Activité en temps réel
         </h2>
         <Link
           href="/clients"
-          className="text-xs font-medium transition-colors hover:text-[var(--accent-1)]"
-          style={{ color: "var(--text-faint)" }}
+          className="flex items-center gap-0.5 text-xs font-medium"
+          style={{ color: "var(--accent)" }}
         >
           Voir tout
+          <ChevronRight size={13} strokeWidth={2.2} />
         </Link>
       </div>
 
-      <ul className="space-y-1">
-        {recentActivity.map((item) => {
-          const Icon = kindIcon[item.kind];
+      <ul className="-mx-1.5">
+        {recentActivity.map((item, i) => {
+          const Icone = ICONE[item.kind];
           return (
             <li
               key={item.id}
-              className="flex items-center gap-3 rounded-xl px-1.5 py-2 transition-colors hover:bg-[var(--panel-soft)]"
+              className="flex items-center gap-3 px-1.5 py-2.5"
+              style={{
+                // Séparateur entre les lignes, jamais après la dernière : un
+                // trait qui pend sous le dernier élément trahit la boucle.
+                borderTop: i === 0 ? "none" : "1px solid var(--border)",
+              }}
             >
-              <span className="relative shrink-0">
-                <span
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-white"
-                  style={{ background: item.color }}
-                >
-                  {item.initials}
-                </span>
-                <span
-                  className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2"
-                  style={{ background: item.color, borderColor: "var(--panel)" }}
-                >
-                  <Icon size={9} className="text-white" />
-                </span>
+              <span
+                className="grid shrink-0 place-items-center"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--accent-tint)",
+                  color: "var(--accent)",
+                }}
+              >
+                <Icone size={17} strokeWidth={1.9} />
               </span>
+
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm" style={{ color: "var(--text)" }}>
                   <span className="font-semibold">{item.name}</span> {item.action}
                 </span>
+                <span className="mt-0.5 block text-xs" style={{ color: "var(--text-faint)" }}>
+                  {item.initials} · carte de fidélité
+                </span>
               </span>
-              <span className="shrink-0 text-xs" style={{ color: "var(--text-faint)" }}>
+
+              <span
+                className="shrink-0 whitespace-nowrap text-xs"
+                style={{ color: "var(--text-faint)" }}
+              >
                 {item.time}
               </span>
             </li>
           );
         })}
       </ul>
-    </div>
+    </section>
   );
 }

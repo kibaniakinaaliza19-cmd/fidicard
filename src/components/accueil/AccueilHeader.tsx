@@ -3,39 +3,47 @@
 import { QrCode, Plus } from "lucide-react";
 import { useUIStore } from "@/store/uiStore";
 
+/**
+ * Salutation et actions principales.
+ *
+ * Le « 👋 » qui suivait le nom est parti. Un emoji dans le chrome d'une
+ * application professionnelle la fait passer pour un prototype : il change de
+ * dessin sur chaque plateforme, n'a pas la graisse du texte qui l'entoure, et
+ * ne dit rien que la phrase ne dise déjà.
+ *
+ * Deux actions, une seule pleine. « Ajouter un tampon » est le geste du
+ * métier ; « Afficher QR » l'accompagne, en retrait.
+ */
 export default function AccueilHeader() {
   const setPublishModalOpen = useUIStore((s) => s.setPublishModalOpen);
   const pushToast = useUIStore((s) => s.pushToast);
 
   return (
-    <header className="flex flex-col gap-4 px-4 pb-6 pt-8 sm:px-6 md:flex-row md:items-start md:justify-between lg:px-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text)" }}>
-          Bonjour, Café Madeleine <span className="inline-block">👋</span>
-        </h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-dim)" }}>
-          Avec FidiCard, une fidélité sans effort.
-        </p>
-      </div>
+    <header className="px-4 pb-6 pt-6 sm:px-6 lg:px-8">
+      <h1
+        className="text-[26px] font-bold leading-tight tracking-tight sm:text-3xl"
+        style={{ color: "var(--text)" }}
+      >
+        Bonjour, Café Madeleine
+      </h1>
+      <p className="mt-1.5 text-sm" style={{ color: "var(--text-dim)" }}>
+        Voici votre activité de ce mois.
+      </p>
 
-      <div className="flex items-center gap-2.5">
+      <div className="mt-5 flex items-center gap-3">
         <button
           onClick={() => setPublishModalOpen(true)}
-          className="flex cursor-pointer items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
-          style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+          className="btn btn-secondary flex-1 sm:flex-none"
         >
-          <QrCode size={15} />
+          <QrCode size={17} strokeWidth={1.9} />
           Afficher QR
         </button>
+
         <button
           onClick={() => pushToast("Tampon ajouté au client")}
-          className="flex cursor-pointer items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-[1.02]"
-          style={{
-            background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))",
-            boxShadow: "0 10px 24px -8px var(--accent-glow)",
-          }}
+          className="btn btn-primary cta-rangee"
         >
-          <Plus size={15} />
+          <Plus size={17} strokeWidth={2.4} />
           Ajouter un tampon
         </button>
       </div>
