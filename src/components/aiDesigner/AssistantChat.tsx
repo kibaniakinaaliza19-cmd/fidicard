@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Send, Mic, Paperclip, Wand2, RefreshCw } from "lucide-react";
+import { Send, Mic, Paperclip, Wand2, RefreshCw } from "lucide-react";
 import MiniCard from "@/components/cardEditor/MiniCard";
+import OrbeIA from "@/components/aiDesigner/OrbeIA";
 import { useCardStore } from "@/store/cardStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { useUIStore } from "@/store/uiStore";
@@ -43,6 +44,17 @@ const SECTOR_CHIPS = [
 
 // Suggestions rapides sous la conversation. Déclarées hors du composant : les
 // actions sont décrites en données, jamais en fermetures créées au rendu.
+/* Les quatre demandes qui reviennent, proposées tant que la conversation est
+   vierge. Ce ne sont pas des fonctionnalités : chacune n'écrit qu'une phrase
+   dans la conversation. L'assistant reste un interlocuteur, pas un menu
+   déguisé en tableau de bord. */
+const DEMANDES = [
+  { titre: "Créer une carte", detail: "Générez votre carte de fidélité", envoi: "Crée-moi une nouvelle carte de fidélité" },
+  { titre: "Modifier ma carte", detail: "Dites ce que vous voulez changer", envoi: "Je veux modifier ma carte" },
+  { titre: "Faire revenir mes clients", detail: "Une offre à envoyer", envoi: "Fais une offre pour faire revenir mes clients" },
+  { titre: "Comprendre mes résultats", detail: "Ce que disent vos chiffres", envoi: "Pourquoi mes récompenses sont-elles moins utilisées ?" },
+] as const;
+
 const QUICK: { label: string; send?: string; open?: "import" }[] = [
   { label: "Importer une carte", open: "import" },
   { label: "Café à tampons", send: "Je tiens un café, je veux une carte à tampons" },
@@ -78,6 +90,11 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Pas de défilement tant que la conversation n'a pas commencé : sinon
+    // l'écran d'accueil — l'orbe et les quatre entrées en matière — se
+    // retrouve poussé hors du cadre à l'ouverture de la page, et l'on arrive
+    // sur un champ de saisie seul.
+    if (messages.length <= 1) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
@@ -308,26 +325,83 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border"
       style={{ borderColor: "var(--border)", background: "var(--panel)" }}
     >
-      {/* header */}
-      <div className="flex items-center gap-3 border-b px-5 py-4" style={{ borderColor: "var(--border)" }}>
-        <span
-          className="flex h-10 w-10 items-center justify-center rounded-xl"
-          style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
-        >
-          <Sparkles size={20} className="text-white" />
-        </span>
+      {/* En-tête. L'orbe réagit : elle s'accélère et ferme les yeux pendant
+          que l'assistant travaille — l'état du système se lit sur lui, pas
+          seulement sur trois points qui rebondissent plus bas. */}
+      <div
+        className="flex items-center gap-3 border-b px-5 py-4"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <OrbeIA taille={40} actif={busy} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>FidiIA</p>
-          <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>Votre expert fidélité</p>
+          <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+            Fidi<span style={{ color: "var(--accent)" }}>IA</span>
+          </p>
+          <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>
+            {busy ? "Réfléchit…" : "Votre assistant intelligent"}
+          </p>
         </div>
-        <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-dim)" }}>
-          <span className="h-2 w-2 rounded-full" style={{ background: "#4CAF7D" }} /> connecté
+        <span
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+          style={{ border: "1px solid var(--border-strong)", color: "var(--text-dim)" }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--success)" }} />
+          En ligne
         </span>
       </div>
 
       {/* conversation */}
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {messages.map((m) => (
+        {/* Conversation vierge : l'orbe en grand et quatre entrées en matière.
+            Une page de discussion vide devant un curseur qui clignote ne dit
+            pas ce qu'on peut demander, et le commerçant referme. */}
+        {messages.length <= 1 && (
+          <div className="pb-1">
+            <div className="flex flex-col items-center text-center">
+              <OrbeIA taille={88} actif={busy} />
+              <p className="mt-3 text-lg font-semibold" style={{ color: "var(--text)" }}>
+                Fidi<span style={{ color: "var(--accent)" }}>IA</span>
+              </p>
+              <p className="mt-1 max-w-[280px] text-[13px]" style={{ color: "var(--text-dim)" }}>
+                Décrivez votre activité, et je fabrique votre carte de fidélité.
+              </p>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {DEMANDES.map((d) => (
+                <button
+                  key={d.titre}
+                  onClick={() => submit(d.envoi)}
+                  className="cursor-pointer text-left transition-colors"
+                  style={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "var(--space-3)",
+                  }}
+                >
+                  <span
+                    className="block text-[13px] font-semibold"
+                    style={{ color: "var(--text)" }}
+                  >
+                    {d.titre}
+                  </span>
+                  <span
+                    className="mt-1 block text-[11px] leading-tight"
+                    style={{ color: "var(--text-faint)" }}
+                  >
+                    {d.detail}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Le premier message répète mot pour mot ce que l'orbe vient de
+            dire. On ne le montre qu'une fois la conversation engagée, où il
+            reprend sa place d'ouverture de fil. */}
+        {(messages.length <= 1 ? [] : messages).map((m) => (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
             <div className="max-w-[85%]">
               {m.text && (
@@ -407,22 +481,37 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         )}
       </div>
 
-      {/* suggestions rapides */}
-      <div className="flex flex-wrap gap-1.5 border-t px-5 pt-3" style={{ borderColor: "var(--border)" }}>
+      {/* Le bloc de saisie.
+          Suggestions et champ vivaient dans deux zones séparées par un trait ;
+          réunis dans un seul cadre cerclé d'orange, ils se lisent comme
+          l'endroit où l'on parle — c'est le centre de gravité de l'écran, et
+          la seule chose qui fabrique la carte. */}
+      <div
+        className="m-3 mt-0 overflow-hidden"
+        style={{
+          border: "1px solid var(--accent)",
+          borderRadius: "var(--radius-lg)",
+          background: "var(--surface-2)",
+          boxShadow: "0 0 0 3px var(--accent-soft)",
+        }}
+      >
+      {/* Les puces disparaissent tant que l'écran d'accueil est affiché : ses
+          quatre cartes proposent déjà d'entrer en matière, et deux séries de
+          raccourcis empilées poussaient le tout hors de l'écran. */}
+      <div className={`flex-wrap gap-1.5 px-3 pt-3 ${messages.length <= 1 ? "hidden" : "flex"}`}>
         {QUICK.map((s) => (
           <button
             key={s.label}
             onClick={() => (s.open === "import" ? setImportCardOpen(true) : submit(s.send))}
-            className="cursor-pointer rounded-full border px-2.5 py-1 text-[11px] transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
-            style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
+            className="cursor-pointer rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
           >
             {s.label}
           </button>
         ))}
       </div>
 
-      {/* saisie */}
-      <div className="flex items-center gap-2 px-5 py-4">
+      <div className="flex items-center gap-2 px-3 py-3">
         <button onClick={() => setImportCardOpen(true)} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Joindre / importer">
           <Paperclip size={18} />
         </button>
@@ -432,8 +521,8 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
           onKeyDown={(e) => e.key === "Enter" && submit()}
           disabled={busy}
           placeholder={busy ? "L'assistant réfléchit…" : "Décrivez votre entreprise…"}
-          className="flex-1 rounded-xl border bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-[var(--accent-1)] disabled:opacity-60"
-          style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+          className="flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
+          style={{ color: "var(--text)" }}
         />
         <button onClick={startVoice} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Parler">
           <Mic size={18} />
@@ -446,6 +535,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         >
           {phase === "activity" ? <Wand2 size={17} /> : <Send size={16} />}
         </button>
+      </div>
       </div>
     </div>
   );

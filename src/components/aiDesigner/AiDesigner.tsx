@@ -76,7 +76,7 @@ export default function AiDesigner() {
             colonne de hauteur automatique, sa base valait zéro et le panneau
             se réduisait à un trait — la scène en dessous occupait tout
             l'écran, et il n'y avait plus rien à quoi parler. */}
-        <div className="flex min-h-[62dvh] flex-col lg:min-h-0 lg:flex-1">
+        <div className="flex min-h-[70dvh] flex-col lg:min-h-0 lg:flex-1">
           <AssistantChat onStep={setStep} />
         </div>
         <CardStage />

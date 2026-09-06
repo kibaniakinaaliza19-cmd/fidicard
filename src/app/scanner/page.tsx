@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Smartphone,
   ScanLine,
+  Maximize2,
 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import ScanSimulator from "@/components/scanner/ScanSimulator";
@@ -27,10 +28,14 @@ import { getConfigSteps, configProgress } from "@/lib/configSteps";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
+import { CODE_COMMERCE, LIEN_INSCRIPTION } from "@/lib/lienInscription";
+import BottomSheet from "@/components/ui/BottomSheet";
 import { validerProgramme } from "@/lib/loyalty";
 
-const DEMO_CODE = "7F8K92";
-const JOIN_URL = `https://fidicard.com/join/${DEMO_CODE}`;
+/* Le code et le lien viennent de la source unique : ils existaient aussi,
+   sous une autre forme, dans la fenetre de publication. */
+const DEMO_CODE = CODE_COMMERCE;
+const JOIN_URL = LIEN_INSCRIPTION;
 
 /* Serialize the on-screen QR <svg> to a downloadable PNG. */
 function downloadQrPng(svg: SVGSVGElement | null, filename: string, onDone: () => void) {
@@ -76,6 +81,8 @@ export default function ScannerPage() {
   const pct = configProgress(steps);
   const preSteps = steps.filter((s) => s.key !== "publish");
   const canPublish = preSteps.every((s) => s.done);
+
+  const [pleinEcran, setPleinEcran] = useState(false);
 
   function copyLink() {
     navigator.clipboard?.writeText(JOIN_URL).catch(() => {});
@@ -206,6 +213,18 @@ export default function ScannerPage() {
                 >
                   <ExternalLink size={15} /> Aperçu
                 </Link>
+              </div>
+              {/* Le geste du comptoir : on tend l'écran au client. À la taille
+                  de la page, le code se lit mal à bout de bras. */}
+              <div className="flex gap-2">
+                <button
+                  onClick={published ? () => setPleinEcran(true) : undefined}
+                  disabled={!published}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)] disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+                >
+                  <Maximize2 size={15} /> Afficher en plein écran
+                </button>
               </div>
             </div>
           </div>
@@ -373,6 +392,24 @@ export default function ScannerPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Le QR seul, en grand, sur fond blanc : c'est ce qu'on tend au client.
+          Rien d'autre à l'écran — un libellé de plus, et l'appareil photo d'en
+          face hésite entre deux zones contrastées. */}
+      <BottomSheet
+        open={pleinEcran}
+        onClose={() => setPleinEcran(false)}
+        title="À présenter au client"
+      >
+        <div className="flex flex-col items-center gap-4 px-5 pb-4">
+          <div style={{ background: "#ffffff", padding: 16, borderRadius: "var(--radius-md)" }}>
+            <QRCodeSVG value={JOIN_URL} size={232} bgColor="#ffffff" fgColor="#050505" level="M" />
+          </div>
+          <p className="text-center text-xs" style={{ color: "var(--text-faint)" }}>
+            {JOIN_URL}
+          </p>
+        </div>
+      </BottomSheet>
     </div>
   );
 }
