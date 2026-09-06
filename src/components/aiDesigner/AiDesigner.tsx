@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Eye, Rocket, Check } from "lucide-react";
 import AssistantChat from "@/components/aiDesigner/AssistantChat";
 import CardStage from "@/components/aiDesigner/CardStage";
@@ -18,9 +17,15 @@ export default function AiDesigner() {
   const [step, setStep] = useState(1);
 
   return (
-    <div className="flex h-full flex-col px-6 py-5">
+    /* Sur téléphone, la page ne tenait pas : deux panneaux côte à côte, dont
+     * un de 420 px fixes, dans une fenêtre de 390. La scène débordait à
+     * droite, la conversation sortait entièrement de l'écran — et c'est
+     * pourtant elle, désormais, qui fabrique la carte. La barre supérieure
+     * passe donc en colonne, et les deux panneaux s'empilent : conversation
+     * d'abord, aperçu en dessous. */
+    <div className="flex h-full flex-col px-4 py-4 sm:px-6 sm:py-5">
       {/* barre supérieure */}
-      <div className="mb-5 flex items-center justify-between gap-4">
+      <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex items-center gap-5">
           <h1 className="text-xl font-semibold" style={{ color: "var(--text)" }}>Ma carte</h1>
           <div className="hidden items-center gap-1.5 lg:flex">
@@ -49,15 +54,13 @@ export default function AiDesigner() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWalletPreviewOpen(true)}
-            className="flex cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors hover:border-[var(--accent-1)]"
-            style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+            className="btn btn-secondary flex-1 sm:flex-none"
           >
             <Eye size={15} /> Aperçu Wallet
           </button>
           <button
             onClick={() => { setStep(4); setPublishModalOpen(true); }}
-            className="flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
-            style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
+            className="btn btn-primary flex-1 sm:flex-none"
           >
             <Rocket size={15} /> Enregistrer & Publier
           </button>
@@ -65,14 +68,24 @@ export default function AiDesigner() {
       </div>
 
       {/* corps : conversation | scène carte */}
-      <div className="flex min-h-0 flex-1 gap-5">
-        <AssistantChat onStep={setStep} />
+      {/* Empilé sous lg, côte à côte au-delà. La conversation vient en
+          premier : c'est le seul moyen de modifier la carte. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-5">
+        {/* Hauteur explicite sur téléphone.
+            La conversation se dimensionne avec flex-1 ; empilée dans une
+            colonne de hauteur automatique, sa base valait zéro et le panneau
+            se réduisait à un trait — la scène en dessous occupait tout
+            l'écran, et il n'y avait plus rien à quoi parler. */}
+        <div className="flex min-h-[62dvh] flex-col lg:min-h-0 lg:flex-1">
+          <AssistantChat onStep={setStep} />
+        </div>
         <CardStage />
       </div>
 
+      {/* Le lien « éditeur avancé » est retiré : la carte se façonne par la
+          conversation, pas à la main. */}
       <p className="mt-3 text-center text-[11px]" style={{ color: "var(--text-faint)" }}>
-        FidiIA · FidiCard ·{" "}
-        <Link href="/carte/editeur" className="underline hover:text-[var(--accent-1)]">éditeur avancé</Link>
+        FidiIA · FidiCard
       </p>
 
       <ImportCardModal />

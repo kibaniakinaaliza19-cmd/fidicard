@@ -17,12 +17,19 @@ export default function ProgressRing({
   taille = 76,
   epaisseur = 5,
   libelle,
+  couleur = "var(--accent)",
 }: {
   /** progression, de 0 à 100 */
   valeur: number;
   taille?: number;
   epaisseur?: number;
   libelle?: string;
+  /**
+   * Couleur de l'arc. Orange par défaut — c'est une progression vers un
+   * objectif. Une mesure de santé (taux de retour, par exemple) passe ici une
+   * couleur d'état, qui dit d'un coup d'œil si le niveau est bon ou non.
+   */
+  couleur?: string;
 }) {
   const reduit = useReducedMotion();
   const borne = Math.max(0, Math.min(100, valeur));
@@ -50,7 +57,7 @@ export default function ProgressRing({
           cy={taille / 2}
           r={rayon}
           fill="none"
-          stroke="var(--accent)"
+          stroke={couleur}
           strokeWidth={epaisseur}
           strokeLinecap="round"
           strokeDasharray={perimetre}

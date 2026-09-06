@@ -2,14 +2,12 @@
 
 import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Lock, Stamp, Gift, Barcode, Building2, Box, Apple, Smartphone,
-  Wifi, BatteryFull, Signal, Trophy, ImageIcon, Type, Palette, Sparkles, UploadCloud,
+  Wifi, BatteryFull, Signal, Trophy, UploadCloud,
 } from "lucide-react";
 import WalletCard from "@/components/aiDesigner/WalletCard";
-import { useCardStore, type DrawerId } from "@/store/cardStore";
+import { useCardStore } from "@/store/cardStore";
 import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { useUIStore } from "@/store/uiStore";
 import { PROGRAM_PRESETS } from "@/lib/loyalty";
@@ -30,10 +28,8 @@ export default function CardStage() {
   const setTotalStamps = useLoyaltyStore((s) => s.setTotalStamps);
   const setMode = useLoyaltyStore((s) => s.setMode);
   const applyPreset = useLoyaltyStore((s) => s.applyPreset);
-  const setActiveDrawer = useCardStore((s) => s.setActiveDrawer);
   const setPublishModalOpen = useUIStore((s) => s.setPublishModalOpen);
   const pushToast = useUIStore((s) => s.pushToast);
-  const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("carte");
   const [view, setView] = useState<View>("3d");
@@ -57,26 +53,15 @@ export default function CardStage() {
     reader.readAsDataURL(file);
   }
 
-  // raccourcis « Mode édition » : ouvrent l'éditeur avancé sur le bon tiroir
-  function openEditor(drawer: DrawerId) {
-    setActiveDrawer(drawer);
-    router.push("/carte/editeur");
-  }
-  const QUICK_TOOLS: { id: DrawerId; label: string; icon: typeof ImageIcon }[] = [
-    { id: "upload", label: "Logo", icon: ImageIcon },
-    { id: "images", label: "Image", icon: ImageIcon },
-    { id: "texte", label: "Texte", icon: Type },
-    { id: "tampons", label: "Tampons", icon: Stamp },
-    { id: "couleurs", label: "Couleurs", icon: Palette },
-  ];
-
   const nameLayer = card.layers.find((l) => l.type === "text" && l.name === "Nom du commerce");
   const business = nameLayer && nameLayer.type === "text" ? nameLayer.content : undefined;
   const lastTier = config.paliers.length ? config.paliers[config.paliers.length - 1] : null;
 
   return (
     <div
-      className="flex w-[420px] shrink-0 flex-col overflow-hidden rounded-3xl border"
+      // 420 px fixes seulement quand il y a la place. En dessous, la scène
+      // prend la largeur disponible au lieu de déborder de l'écran.
+      className="flex w-full shrink-0 flex-col overflow-hidden rounded-3xl border lg:w-[420px]"
       style={{ borderColor: "var(--border)", background: "var(--panel)" }}
     >
       {/* tabs */}
@@ -90,7 +75,7 @@ export default function CardStage() {
           <button
             key={id}
             onClick={() => setTab(id)}
-            className="relative cursor-pointer px-3 py-2 text-xs font-medium transition-colors"
+            className="relative cursor-pointer whitespace-nowrap px-3 py-2 text-xs font-medium transition-colors"
             style={{ color: tab === id ? "var(--accent-1)" : "var(--text-dim)" }}
           >
             {label}
@@ -100,30 +85,10 @@ export default function CardStage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {/* Mode édition + outils rapides */}
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            onClick={() => router.push("/carte/editeur")}
-            className="flex cursor-pointer items-center gap-2 text-xs font-medium"
-            style={{ color: "var(--text-dim)" }}
-            title="Ouvrir l'éditeur avancé"
-          >
-            <Sparkles size={13} className="text-[var(--accent-1)]" /> Mode édition
-          </button>
-          <div className="flex gap-1">
-            {QUICK_TOOLS.map((t) => (
-              <button
-                key={t.label}
-                onClick={() => openEditor(t.id)}
-                title={t.label}
-                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
-                style={{ borderColor: "var(--border)", color: "var(--text-dim)" }}
-              >
-                <t.icon size={14} />
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* La rangée « Mode édition » et ses cinq outils rapides ont été
+            retirées. Chacune ouvrait l'éditeur au pixel sur le bon tiroir ;
+            il n'y a plus d'éditeur. La carte se façonne par la conversation,
+            à gauche, et nulle part ailleurs. */}
 
         {/* --- aperçu carte : commun à tous les onglets --- */}
         <div
@@ -278,7 +243,6 @@ export default function CardStage() {
                 Définissez la récompense dans l&rsquo;onglet Récompenses.
               </p>
             )}
-            <EditorLink />
           </div>
         )}
 
@@ -312,7 +276,6 @@ export default function CardStage() {
                 </button>
               ))}
             </div>
-            <EditorLink />
           </div>
         )}
 
@@ -334,7 +297,6 @@ export default function CardStage() {
             >
               Vérifier & publier
             </button>
-            <EditorLink />
           </div>
         )}
       </div>
@@ -357,14 +319,3 @@ function LockedRow({ icon: Icon, label, value }: { icon: typeof Stamp; label: st
   );
 }
 
-function EditorLink() {
-  return (
-    <Link
-      href="/carte/editeur"
-      className="mt-3 flex items-center justify-center gap-1.5 rounded-lg border border-dashed py-2 text-[11px] font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
-      style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
-    >
-      Personnalisation avancée (éditeur)
-    </Link>
-  );
-}
