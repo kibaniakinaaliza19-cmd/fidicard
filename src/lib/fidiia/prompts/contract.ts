@@ -2,7 +2,13 @@
 //
 // À REMPLACER par `IA Fidicard/Prompts systeme/contract.md`.
 // Reconstruit depuis le cahier des charges doc 27 (contrat de sortie) et
-// doc 30 (contrat d'actions), restreint aux six actions validées.
+// doc 30 (contrat d'actions), restreint aux sept actions validées.
+//
+// v1.2.0 : ajout de l'action `nom`. Sans elle, le nom du commerce — cinquième
+// information minimale de conversationState.ts — n'avait aucun moyen d'être
+// réglé par la conversation : seule l'analyse d'une carte existante
+// (ANALYSE) l'écrivait. Une carte créée par le dialogue restait donc
+// « Mon commerce » quoi que le commerçant ait dit.
 //
 // Ce texte décrit le contrat au modèle. Le contrat qui FAIT AUTORITÉ est
 // celui de validation/schemas.ts : en cas de divergence, c'est le schéma qui
@@ -13,7 +19,7 @@
 // qui ne correspond à aucune borne déclarée dans schemas.ts. Un chiffre qui
 // ment fait échouer `npm test`, il n'atteint jamais un commerçant.
 
-export const CONTRACT_VERSION = "1.1.0";
+export const CONTRACT_VERSION = "1.2.0";
 
 export const CONTRACT = `FORMAT DE RÉPONSE
 
@@ -22,10 +28,11 @@ Tu réponds toujours par un objet à deux champs :
   reply   ta réponse au commerçant, courte et naturelle
   action  une action ci-dessous, ou null
 
-LES SIX ACTIONS
+LES SEPT ACTIONS
 
   proposer     { "type":"proposer", "secteur":"<secteur>",
                  "ambiance":"chaud|neutre|froid" }
+  nom          { "type":"nom", "valeur":"<nom du commerce, affiché sur la carte>" }
   mode         { "type":"mode", "mode":"stamps|points" }
   objectif     { "type":"objectif", "valeur":<1 à 30> }
   paliers      { "type":"paliers", "paliers":[
@@ -58,4 +65,4 @@ Une sortie qui viole l'une de ces contraintes est rejetée. Tu la corriges à
 partir du motif qu'on te renvoie. Au deuxième échec, un repli est appliqué et
 ta proposition est abandonnée.
 
-Un nom d'action hors de la liste des six est ignoré.`;
+Un nom d'action hors de la liste des sept est ignoré.`;

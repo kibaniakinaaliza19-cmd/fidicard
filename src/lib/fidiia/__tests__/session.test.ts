@@ -44,6 +44,7 @@ for (const s of SCENARIOS) {
 
     const a = s.attendu;
     if (a.secteur !== undefined) assert.equal(session.etat.secteur, a.secteur);
+    if (a.nomCommerce !== undefined) assert.equal(session.etat.nomCommerce, a.nomCommerce);
     if (a.mode !== undefined) assert.equal(session.etat.systemeFidelite, a.mode);
     if (a.objectif !== undefined) assert.equal(session.etat.objectif, a.objectif);
     if (a.creationAutorisee !== undefined) {

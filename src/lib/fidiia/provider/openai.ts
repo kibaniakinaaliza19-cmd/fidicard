@@ -31,6 +31,19 @@ function env(nom: string): string | undefined {
   return t ? t : undefined;
 }
 
+// Journal minimal, aligné sur celui de la route /api/assistant : jamais la
+// clé, jamais le contenu de la conversation.
+function journaliser(
+  appel: "chat" | "vision",
+  event: "start" | "success" | "error",
+  modele: string,
+  details: Record<string, unknown> = {},
+) {
+  console.log(
+    JSON.stringify({ scope: `fidiia.openai.${appel}`, event, model: modele, at: new Date().toISOString(), ...details }),
+  );
+}
+
 export interface OptionsOpenAI {
   cle?: string;
   modele?: string;
@@ -70,6 +83,27 @@ function lireArguments(brut: string | undefined): unknown {
     return JSON.parse(brut);
   } catch {
     return brut;
+  }
+}
+
+/**
+ * `demanderAuModele` (index.ts) appelle toujours `chat(messages, [])` : le
+ * contrat de sortie (prompts/contract.ts) ne passe pas par le function
+ * calling natif d'OpenAI, il demande au modèle un objet `{ reply, action }`
+ * écrit dans le texte de la réponse — exactement le format que produit déjà
+ * le fournisseur simulé. Sans ce décodage, `action` resterait toujours
+ * absent et la carte ne se construirait jamais qu'avec des champs vides.
+ */
+function decoderContenu(texte: string): { reply: string; action: unknown } {
+  const nettoye = texte.replace(/```(?:json)?/g, "").trim();
+  const debut = nettoye.indexOf("{");
+  const fin = nettoye.lastIndexOf("}");
+  if (debut === -1 || fin <= debut) return { reply: texte, action: null };
+  try {
+    const p = JSON.parse(nettoye.slice(debut, fin + 1)) as Record<string, unknown>;
+    return { reply: typeof p.reply === "string" ? p.reply : texte, action: p.action ?? null };
+  } catch {
+    return { reply: texte, action: null };
   }
 }
 
@@ -124,49 +158,72 @@ export function creerOpenAIProvider(options: OptionsOpenAI = {}): LLMProvider {
     id: `openai:${modele}`,
 
     async chat(messages: Message[], tools: Tool[]): Promise<ChatResult> {
-      const data = await poster({
-        model: modele,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        ...(tools.length
-          ? {
-              tools: tools.map((t) => ({
-                type: "function",
-                function: {
-                  name: t.name,
-                  description: t.description,
-                  parameters: t.parameters,
-                },
-              })),
-            }
-          : {}),
-      });
+      journaliser("chat", "start", modele, { messages: messages.length });
+      let data: ReponseChat;
+      try {
+        data = await poster({
+          model: modele,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          ...(tools.length
+            ? {
+                tools: tools.map((t) => ({
+                  type: "function",
+                  function: {
+                    name: t.name,
+                    description: t.description,
+                    parameters: t.parameters,
+                  },
+                })),
+              }
+            : {}),
+        });
+      } catch (err) {
+        journaliser("chat", "error", modele, { reason: (err as Error).message.slice(0, 300) });
+        throw err;
+      }
+      journaliser("chat", "success", modele);
 
       const msg = data.choices?.[0]?.message;
-      const appel = msg?.tool_calls?.[0]?.function;
 
+      // Chemin natif : conservé pour le jour où `tools` ne sera plus vide.
+      const appelNatif = msg?.tool_calls?.[0]?.function;
+      if (appelNatif?.name) {
+        return { reply: msg?.content ?? "", toolCall: { name: appelNatif.name, arguments: lireArguments(appelNatif.arguments) } };
+      }
+
+      // Chemin réel aujourd'hui : le contrat (prompts/contract.ts) demande un
+      // objet `{ reply, action }` dans le texte de la réponse.
+      const { reply, action } = decoderContenu(msg?.content ?? "");
+      const type = action && typeof action === "object" ? (action as Record<string, unknown>).type : undefined;
       return {
-        reply: msg?.content ?? "",
-        ...(appel?.name
-          ? { toolCall: { name: appel.name, arguments: lireArguments(appel.arguments) } }
-          : {}),
+        reply,
+        ...(typeof type === "string" ? { toolCall: { name: type, arguments: action } } : {}),
       };
     },
 
     async vision(image: string, prompt: string): Promise<VisionResult> {
       // `image` est une URL ou une data: URL — les deux sont acceptées telles
       // quelles par l'API.
-      const data = await poster({
-        model: modeleVision,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: image } },
-            ],
-          },
-        ],
-      });
+      journaliser("vision", "start", modeleVision);
+      let data: ReponseChat;
+      try {
+        data = await poster({
+          model: modeleVision,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: image } },
+              ],
+            },
+          ],
+        });
+      } catch (err) {
+        journaliser("vision", "error", modeleVision, { reason: (err as Error).message.slice(0, 300) });
+        throw err;
+      }
+      journaliser("vision", "success", modeleVision);
 
       const texte = data.choices?.[0]?.message?.content ?? "";
       // La sortie vision n'est pas contrainte par un outil : elle peut être du

@@ -52,6 +52,18 @@ function detecterNombre(t: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
+/**
+ * Sur le texte BRUT, pas normalisé : le nom doit garder sa casse et ses
+ * accents d'origine — c'est ce qui s'affiche sur la carte, pas une clé de
+ * recherche.
+ */
+const RE_NOM_COMMERCE = /(?:s'appelle|se nomme|le nom (?:est|de la carte est))\s+([^,.;!?]{2,60})/i;
+
+function detecterNomCommerce(texteBrut: string): string | undefined {
+  const m = texteBrut.match(RE_NOM_COMMERCE);
+  return m ? m[1].trim() : undefined;
+}
+
 /** Réponses figées, indexées par déclencheur. L'ordre compte : première règle
  *  qui matche.
  *
@@ -129,6 +141,18 @@ function repondre(dernier: string, contexte: string): ChatResult {
     return {
       reply: "Voici trois propositions. Cliquez celle qui vous parle.",
       toolCall: { name: "proposer", arguments: { type: "proposer", secteur, ambiance } },
+    };
+  }
+
+  // --- nom du commerce -------------------------------------------------
+  // Après l'ambiance : quand les deux arrivent dans le même message,
+  // « proposer » reste le geste le plus utile, le nom peut attendre le tour
+  // suivant.
+  const nomCommerce = detecterNomCommerce(dernier);
+  if (nomCommerce) {
+    return {
+      reply: `Noté : « ${nomCommerce} » sera le nom affiché sur la carte.`,
+      toolCall: { name: "nom", arguments: { type: "nom", valeur: nomCommerce } },
     };
   }
 

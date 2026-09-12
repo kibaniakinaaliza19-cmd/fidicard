@@ -1,4 +1,4 @@
-// Application des six actions du contrat de sortie.
+// Application des sept actions du contrat de sortie.
 //
 // Deux principes :
 //   1. Une action n'est appliquée qu'après validation par les schémas.
@@ -32,6 +32,12 @@ export function appliquerAction(
       const e = majEtat(etat, { secteur: action.secteur });
       const m = noterPreference(noterDecision(memory, "ambiance", action.ambiance), `ambiance ${action.ambiance}`);
       return { ok: true, etat: e, memory: m, effet: `trois propositions ${action.secteur} / ${action.ambiance}` };
+    }
+
+    case "nom": {
+      const e = majEtat(etat, { nomCommerce: action.valeur });
+      const m = noterDecision(memory, "nom", action.valeur);
+      return { ok: true, etat: e, memory: m, effet: `nom réglé sur « ${action.valeur} »` };
     }
 
     case "mode": {

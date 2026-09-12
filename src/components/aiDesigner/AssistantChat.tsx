@@ -16,6 +16,8 @@ import {
   type Tone,
 } from "@/lib/aiDesigner/conversation";
 import type { TemplateEntry } from "@/data/templateCatalog";
+import type { CardDoc } from "@/types/layer";
+import type { LoyaltyConfig } from "@/lib/loyalty";
 
 type Chip = { label: string; kind: "sector" | "tone"; value: string };
 interface Msg {
@@ -24,7 +26,16 @@ interface Msg {
   text?: string;
   chips?: Chip[];
   proposals?: TemplateEntry[];
+  /** Carte conçue par FidiIA (moteur `lib/fidiia`), déjà appliquée. Aperçu
+   *  en lecture seule — contrairement à `proposals`, il n'y a rien à
+   *  choisir : le modèle a conçu une carte, pas trois options. */
+  cardApplied?: CardDoc;
 }
+
+/** Blob de session `lib/fidiia`, opaque ici : le client le stocke et le
+ *  renvoie tel quel à chaque requête. Aucun état ne vit côté serveur entre
+ *  deux messages. */
+type FidiiaSession = Record<string, unknown> | null;
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
@@ -92,6 +103,9 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [busy, setBusy] = useState(false);
   const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Session `lib/fidiia` en cours, renvoyée à chaque requête. Une ref, pas un
+  // state : elle ne pilote aucun rendu, elle ne fait que voyager.
+  const fidiiaSession = useRef<FidiiaSession>(null);
 
   useEffect(() => {
     // Pas de défilement tant que la conversation n'a pas commencé : sinon
@@ -219,57 +233,53 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     pushToast(`Carte « ${entry.name} » appliquée.`);
   }
 
-  // --- mode « vrai modèle » : le serveur mène la conversation ---
-  type Action =
-    | { type: "propose"; sector: string; tone: string }
-    | { type: "set_stamps"; count: number }
-    | { type: "set_reward"; text: string }
-    | null;
+  // --- mode « vrai modèle » : le moteur `lib/fidiia` mène la conversation ---
 
-  function execAction(action: Action) {
-    if (!action) return;
-    if (action.type === "propose") {
-      const proposals = proposalsFor(action.sector, action.tone, shown.current, mode);
-      proposals.forEach((p) => shown.current.add(p.id));
-      setSector(action.sector);
-      setTone(action.tone);
-      add({ role: "assistant", proposals });
-      setPhase("proposals");
-      onStep(2);
-    } else if (action.type === "set_stamps") {
-      useLoyaltyStore.getState().setTotalStamps(action.count);
-    } else if (action.type === "set_reward") {
-      const cfg = useLoyaltyStore.getState().config;
-      const pos = cfg.paliers.length ? cfg.paliers[cfg.paliers.length - 1].position : cfg.totalStamps;
-      setConfig({
-        paliers: [{ position: pos, label: shortReward(action.text), description: action.text, type: inferTierType(action.text) }],
-      });
-    }
-  }
-
-  async function runAi(userText: string) {
-    const history = messages.filter((m) => m.text).map((m) => ({ role: m.role, content: m.text as string }));
-    history.push({ role: "user", content: userText });
+  async function runFidiia(userText: string) {
     setBusy(true);
     try {
       const r = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ message: userText, session: fidiiaSession.current }),
       });
       const data = await r.json();
-      if (!r.ok || typeof data.reply !== "string") {
+      if (!r.ok) {
         add({ role: "assistant", text: data.error || "Je n'ai pas pu répondre — réessayez." });
         return;
       }
-      add({ role: "assistant", text: data.reply });
-      execAction(data.action ?? null);
+      fidiiaSession.current = data.session ?? null;
+      // La carte conçue par FidiIA remplace celle de l'éditeur dès qu'elle
+      // existe : le moteur ne propose pas un choix, il livre une carte prête.
+      if (data.carte) {
+        applyTemplate(data.carte as CardDoc);
+        if (data.config) setConfig(data.config as Partial<LoyaltyConfig>);
+        add({ role: "assistant", text: data.reply, cardApplied: data.carte as CardDoc });
+        setPhase("done");
+        onStep(3);
+      } else if (data.reply) {
+        add({ role: "assistant", text: data.reply });
+      }
       if (phase === "activity") onStep(1);
     } catch {
       add({ role: "assistant", text: "Connexion à l'assistant impossible. Réessayez dans un instant." });
     } finally {
       setBusy(false);
     }
+  }
+
+  // « Régénérer » : le moteur ne garde pas de « autres versions » en réserve
+  // — il conçoit une carte à la fois. On efface la carte du blob de session
+  // renvoyé au serveur pour que la prochaine requête reparte d'une création,
+  // avec le même secteur/programme mais une nouvelle passe du modèle.
+  function regenerateFidiia() {
+    if (busy) return;
+    if (fidiiaSession.current) {
+      fidiiaSession.current = { ...fidiiaSession.current, carte: null, carteProposee: false };
+    }
+    const text = "Propose une autre version de la carte.";
+    add({ role: "user", text });
+    runFidiia(text);
   }
 
   function submit(raw?: string) {
@@ -285,7 +295,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       if (phase === "done") useLoyaltyStore.getState().setMode(asked);
     }
     if (aiLive) {
-      runAi(text);
+      runFidiia(text);
       return;
     }
     if (phase === "activity") handleActivity(text);
@@ -491,6 +501,21 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
                     </button>
                   </div>
                 </>
+              )}
+
+              {m.cardApplied && (
+                <div className="mt-2.5">
+                  <div className="w-[140px] overflow-hidden rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                    <MiniCard doc={m.cardApplied} width={140} preview />
+                  </div>
+                  <button
+                    onClick={regenerateFidiia}
+                    className="mt-2 flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+                    style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
+                  >
+                    <RefreshCw size={12} /> Régénérer
+                  </button>
+                </div>
               )}
             </div>
           </div>

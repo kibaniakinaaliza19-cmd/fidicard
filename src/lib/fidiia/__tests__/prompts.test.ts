@@ -98,7 +98,7 @@ test("le contrat énonce réellement les bornes qu'il prétend faire respecter",
 
 /* --------------------------------------------- cohérence avec le contrat */
 
-test("le contrat nomme les six actions, et elles seules", () => {
+test("le contrat nomme les sept actions, et elles seules", () => {
   for (const nom of NOMS_ACTIONS) {
     assert.match(CONTRACT, new RegExp(`\\b${nom}\\b`), `action « ${nom} » absente du contrat`);
   }

@@ -1,4 +1,4 @@
-// Les douze scénarios de référence. Données seules, aucune assertion : les
+// Les treize scénarios de référence. Données seules, aucune assertion : les
 // fichiers .test.ts les consomment.
 //
 // Tous tournent avec le fournisseur simulé. Aucun réseau, aucune clé.
@@ -20,6 +20,7 @@ export interface Scenario {
   attendu: {
     creationAutorisee?: boolean;
     secteur?: string;
+    nomCommerce?: string;
     mode?: "stamps" | "points";
     objectif?: number;
     verrous?: Cible[];
@@ -115,6 +116,22 @@ export const SCENARIOS: Scenario[] = [
       "Change uniquement les couleurs",
     ],
     attendu: { verrous: [], refusAttendu: false },
+  },
+  {
+    id: "nom-commerce",
+    titre: "Le nom du commerce complète les cinq informations minimales",
+    messages: [
+      "Je suis boulanger, ambiance chaleureuse",
+      "Ça s'appelle Le Petit Grain",
+      "10 tampons",
+      "Une baguette offerte",
+    ],
+    attendu: {
+      secteur: "Boulangerie",
+      objectif: 10,
+      nomCommerce: "Le Petit Grain",
+      creationAutorisee: true,
+    },
   },
   {
     id: "demande-contradictoire",

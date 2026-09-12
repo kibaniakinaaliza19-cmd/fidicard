@@ -62,13 +62,17 @@ export const RecompenseSchema = z.object({
 });
 export type Recompense = z.infer<typeof RecompenseSchema>;
 
-/* ---------------------------------------------------------- les 6 actions */
+/* ---------------------------------------------------------- les 7 actions */
 
 export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("proposer"),
     secteur: z.string().min(2).max(NOM_MAX),
     ambiance: AmbianceSchema,
+  }),
+  z.object({
+    type: z.literal("nom"),
+    valeur: z.string().min(1).max(NOM_MAX),
   }),
   z.object({
     type: z.literal("mode"),
@@ -97,6 +101,7 @@ export type Action = z.infer<typeof ActionSchema>;
 /** Noms d'outils exposés au modèle. Un nom hors de cette liste est ignoré. */
 export const NOMS_ACTIONS = [
   "proposer",
+  "nom",
   "mode",
   "objectif",
   "paliers",

@@ -24,9 +24,10 @@ import { creerEtat } from "../state/conversationState.ts";
 
 /* -------------------------------------------------- contrat de sortie */
 
-test("les six actions valides sont acceptées", () => {
+test("les sept actions valides sont acceptées", () => {
   const valides: unknown[] = [
     { type: "proposer", secteur: "Café", ambiance: "chaud" },
+    { type: "nom", valeur: "Le Petit Grain" },
     { type: "mode", mode: "points" },
     { type: "objectif", valeur: 10 },
     { type: "paliers", paliers: [{ position: 5, label: "-10%", description: "Dix pour cent" }] },
