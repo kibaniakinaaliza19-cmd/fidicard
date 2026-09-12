@@ -11,7 +11,44 @@
 // Modèle par défaut ; surclassable via OPENAI_ASSISTANT_MODEL (ex. "gpt-5",
 // "gpt-4o", "gpt-4.1"). "gpt-4o-mini" est rapide et économique pour le chat.
 const MODEL = process.env.OPENAI_ASSISTANT_MODEL || "gpt-4o-mini";
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_BASE = "https://api.openai.com/v1";
+const OPENAI_URL = `${OPENAI_BASE}/chat/completions`;
+
+// Journal serveur minimal : jamais la clé, jamais le contenu conversationnel.
+function logAssistant(event: "health_check" | "start" | "success" | "error", details: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ scope: "assistant.openai", event, model: MODEL, at: new Date().toISOString(), ...details }));
+}
+
+// Vérifie que la clé fonctionne VRAIMENT (pas juste qu'elle existe) : une clé
+// révoquée ou un modèle retiré doit se voir. On interroge l'API sur le modèle
+// précis utilisé par le chat — un appel gratuit (métadonnées, pas de
+// complétion) — et on met le résultat en cache quelques minutes pour ne pas
+// payer ce contrôle à chaque chargement de page.
+const HEALTH_TTL_MS = 5 * 60_000;
+let healthCache: { available: boolean; checkedAt: number } | null = null;
+
+async function checkOpenAIHealth(): Promise<boolean> {
+  if (!process.env.OPENAI_API_KEY) return false;
+  if (healthCache && Date.now() - healthCache.checkedAt < HEALTH_TTL_MS) {
+    return healthCache.available;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    const res = await fetch(`${OPENAI_BASE}/models/${encodeURIComponent(MODEL)}`, {
+      headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+    const available = res.ok;
+    logAssistant("health_check", { ok: available, status: res.status });
+    healthCache = { available, checkedAt: Date.now() };
+    return available;
+  } catch (err) {
+    logAssistant("health_check", { ok: false, status: 0, reason: err instanceof Error ? err.message : "erreur réseau" });
+    healthCache = { available: false, checkedAt: Date.now() };
+    return false;
+  }
+}
 
 const SECTORS = [
   "Café", "Boulangerie", "Pâtisserie", "Restaurant", "Pizzeria", "Fast-food",
@@ -49,8 +86,17 @@ Au premier message, souhaite la bienvenue et demande l'activité. Dès que tu as
 
 interface InMsg { role: "user" | "assistant"; content: string }
 
-export function GET() {
-  return Response.json({ available: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_API_KEY ? MODEL : null });
+export async function GET() {
+  const configured = Boolean(process.env.OPENAI_API_KEY);
+  const available = configured && (await checkOpenAIHealth());
+  return Response.json({
+    available,
+    // configured=true + available=false : la clé est là mais ne répond pas
+    // (révoquée, modèle retiré...) — une vraie panne, à distinguer du cas où
+    // aucune clé n'est renseignée (repli local voulu, pas une panne).
+    configured,
+    model: available ? MODEL : null,
+  });
 }
 
 export async function POST(req: Request) {
@@ -72,6 +118,8 @@ export async function POST(req: Request) {
     return Response.json({ error: "Requête invalide." }, { status: 400 });
   }
 
+  logAssistant("start", { messages: messages.length });
+
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
@@ -91,16 +139,27 @@ export async function POST(req: Request) {
       signal: controller.signal,
     }).finally(() => clearTimeout(timer));
 
-    if (res.status === 401) return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });
-    if (res.status === 429) return Response.json({ error: "Quota OpenAI atteint — réessayez dans un instant." }, { status: 429 });
-    if (!res.ok) return Response.json({ error: `Erreur du service (${res.status}).` }, { status: 502 });
+    if (res.status === 401) {
+      logAssistant("error", { status: 401, reason: "clé invalide" });
+      return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });
+    }
+    if (res.status === 429) {
+      logAssistant("error", { status: 429, reason: "quota atteint" });
+      return Response.json({ error: "Quota OpenAI atteint — réessayez dans un instant." }, { status: 429 });
+    }
+    if (!res.ok) {
+      logAssistant("error", { status: res.status, reason: "réponse non ok" });
+      return Response.json({ error: `Erreur du service (${res.status}).` }, { status: 502 });
+    }
 
     const data = await res.json();
     const text: string = data?.choices?.[0]?.message?.content ?? "";
+    logAssistant("success", { status: res.status });
     const parsed = extractJson(text);
     if (!parsed) return Response.json({ reply: text.slice(0, 500) || "…", action: null });
     return Response.json(parsed);
-  } catch {
+  } catch (err) {
+    logAssistant("error", { status: 0, reason: err instanceof Error ? err.message : "erreur réseau" });
     return Response.json({ error: "L'assistant n'a pas répondu." }, { status: 502 });
   }
 }

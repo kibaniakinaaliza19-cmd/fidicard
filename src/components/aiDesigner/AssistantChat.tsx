@@ -85,6 +85,10 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [input, setInput] = useState("");
   // null = pas encore su ; true = vrai modèle branché ; false = repli local
   const [aiLive, setAiLive] = useState<boolean | null>(null);
+  // true seulement quand une clé est configurée côté serveur mais que
+  // l'appel de contrôle échoue quand même (clé révoquée, modèle retiré...) :
+  // une vraie panne, à distinguer du repli local voulu (pas de clé du tout).
+  const [aiDown, setAiDown] = useState(false);
   const [busy, setBusy] = useState(false);
   const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -98,11 +102,29 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  // détecte si un vrai modèle est configuré côté serveur
+  // détecte si un vrai modèle est configuré côté serveur ET qu'il répond
+  // réellement (pas seulement qu'une clé existe). Une clé configurée mais
+  // qui ne répond pas est une panne : elle doit se voir à l'écran, pas
+  // basculer en silence sur le scénario local comme si de rien n'était.
   useEffect(() => {
     fetch("/api/assistant")
       .then((r) => r.json())
-      .then((d) => setAiLive(Boolean(d.available)))
+      .then((d) => {
+        setAiLive(Boolean(d.available));
+        if (d.configured && !d.available) {
+          setAiDown(true);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: "assistant",
+              text:
+                "⚠️ L'assistant IA est configuré mais ne répond pas actuellement (clé ou modèle invalide côté serveur). " +
+                "Je continue avec l'assistant local le temps que ce soit rétabli.",
+            },
+          ]);
+        }
+      })
       .catch(() => setAiLive(false));
   }, []);
 
@@ -345,8 +367,11 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
           className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
           style={{ border: "1px solid var(--border-strong)", color: "var(--text-dim)" }}
         >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--success)" }} />
-          En ligne
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: aiDown ? "var(--danger)" : "var(--success)" }}
+          />
+          {aiDown ? "IA indisponible" : aiLive ? "En ligne" : "Mode démo"}
         </span>
       </div>
 
