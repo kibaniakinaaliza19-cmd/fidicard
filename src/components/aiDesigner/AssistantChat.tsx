@@ -150,11 +150,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   }
 
   function generate(sec: string, toneId: string, intro: string) {
-    const proposals = proposalsFor(sec, toneId, shown.current, mode);
-    proposals.forEach((p) => shown.current.add(p.id));
-    add({ role: "assistant", text: intro, proposals });
-    setPhase("proposals");
-    onStep(2);
+    montrer(sec, toneId, intro);
   }
 
   function chooseTone(t: Tone) {
@@ -178,7 +174,12 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     setPhase("tone");
   }
 
-  function applyProposal(entry: TemplateEntry) {
+  /* Fabriquer la carte pour de bon.
+   *
+   * Séparé du clic sur une vignette : le modèle doit pouvoir y arriver aussi.
+   * Tant que ce geste n'existait que dans un gestionnaire de clic, « fais-moi
+   * la carte » ne pouvait rien faire d'autre qu'afficher trois images. */
+  function poserCarte(entry: TemplateEntry) {
     applyTemplate(entry.build());
     const L = entry.loyalty;
     if (L) {
@@ -200,6 +201,13 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         ],
       });
     }
+    setPhase("done");
+    onStep(3);
+    pushToast(`Carte « ${entry.name} » appliquée.`);
+  }
+
+  function applyProposal(entry: TemplateEntry) {
+    poserCarte(entry);
     add({ role: "user", text: `J'aime « ${entry.name} »` });
     add({
       role: "assistant",
@@ -207,28 +215,60 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         `Votre carte « ${entry.name} » est prête ✨ Les tampons, la récompense et le code-barres sont gérés automatiquement. ` +
         "Ajustez la à droite, ou dites-moi quoi changer (couleur, nombre de tampons, récompense).",
     });
-    setPhase("done");
-    onStep(3);
-    pushToast(`Carte « ${entry.name} » appliquée.`);
   }
 
   // --- mode « vrai modèle » : le serveur mène la conversation ---
   type Action =
     | { type: "propose"; sector: string; tone: string }
+    | { type: "apply"; choice: number; sector?: string; tone?: string }
+    | { type: "set_mode"; mode: "stamps" | "points" }
     | { type: "set_stamps"; count: number }
     | { type: "set_reward"; text: string }
     | null;
 
+  /* Les trois dernières vignettes affichées, pour que « la deuxième » ait un
+     référent. L'état des messages le contient déjà, mais aller le rechercher
+     supposerait de savoir lequel des messages porte des propositions. */
+  const dernieres = useRef<TemplateEntry[]>([]);
+
+  function montrer(sec: string, ton: string, intro: string) {
+    const proposals = proposalsFor(sec, ton, shown.current, mode);
+    proposals.forEach((p) => shown.current.add(p.id));
+    dernieres.current = proposals;
+    setSector(sec);
+    setTone(ton);
+    add({ role: "assistant", text: intro, proposals });
+    setPhase("proposals");
+    onStep(2);
+    return proposals;
+  }
+
   function execAction(action: Action) {
     if (!action) return;
     if (action.type === "propose") {
-      const proposals = proposalsFor(action.sector, action.tone, shown.current, mode);
-      proposals.forEach((p) => shown.current.add(p.id));
-      setSector(action.sector);
-      setTone(action.tone);
-      add({ role: "assistant", proposals });
-      setPhase("proposals");
-      onStep(2);
+      // Le texte n'est pas décoratif : sans lui, trois images arrivaient sans
+      // que rien n'indique qu'il faut cliquer dessus pour que la carte existe.
+      montrer(action.sector, action.tone, "Cliquez-en une pour l'appliquer — ou dites-moi laquelle.");
+    } else if (action.type === "apply") {
+      /* La demande aboutit, quoi qu'il arrive.
+       *
+       * Si rien n'est affiché, on fabrique la série ici même plutôt que de
+       * répondre par une question de plus : le commerçant a demandé sa carte.
+       * Le secteur déjà connu sert de repli quand le modèle ne le redonne pas. */
+      let choix = dernieres.current;
+      if (choix.length === 0) {
+        const sec = action.sector || sector;
+        if (!sec) {
+          add({ role: "assistant", text: "Dites-moi d'abord votre activité, et je la fabrique." });
+          return;
+        }
+        choix = montrer(sec, action.tone || tone || "chaud", "Voici la série dont je pars 👇");
+      }
+      const entry = choix[Math.min(choix.length - 1, Math.max(0, action.choice - 1))];
+      if (entry) poserCarte(entry);
+    } else if (action.type === "set_mode") {
+      setMode(action.mode);
+      useLoyaltyStore.getState().setMode(action.mode);
     } else if (action.type === "set_stamps") {
       useLoyaltyStore.getState().setTotalStamps(action.count);
     } else if (action.type === "set_reward") {

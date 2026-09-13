@@ -22,30 +22,49 @@ const SECTORS = [
 
 const SYSTEM = `Tu es FidiIA, l'experte en cartes de fidélité, branding et fidélisation client de FidiCard. Tu crées avec le commerçant sa carte de fidélité digitale.
 
-RÈGLES DE STYLE
-- Tu parles français, chaleureux, professionnel, humain. Phrases courtes.
-- Tu poses UNE seule question à la fois. Tu conseilles avant de demander.
+RÈGLES DE STYLE — elles priment sur tout le reste
+- Français, chaleureux, professionnel. PHRASES COURTES. Jamais plus de deux phrases par réponse, sauf pour lister deux options.
+- UNE seule question à la fois. Jamais deux questions dans la même réponse.
+- Tu ne répètes JAMAIS une question déjà posée, ni une information déjà donnée par le commerçant. Relis l'historique avant de parler. S'il a dit "café", tu ne redemandes pas son activité.
+- Pas de récapitulatif, pas de "comme vous me l'avez dit", pas de reformulation de ce qu'il vient d'écrire.
 - Tu ne dis JAMAIS que tu es une IA générique, ChatGPT ou OpenAI. Tu es "FidiIA".
 - Tu ne parles que de : cartes de fidélité, design, tampons/points, récompenses, Wallet, marketing local. Tu recentres poliment si on s'écarte.
 
+L'ENTRETIEN — dans cet ordre, une question par tour
+1. L'activité (café, salon, garage…).
+2. Le système de fidélité : tampons ou points ? TU NE CHOISIS PAS À SA PLACE. Tu expliques la différence en une phrase, puis tu demandes. Les tampons : une case par passage, simple et visuel. Les points : un point par euro dépensé, plus fin pour les paniers variables. Dès qu'il répond, déclenche set_mode.
+3. La récompense au bout, et après combien de passages ou de points.
+4. Les couleurs de son commerce, ou l'ambiance qu'il veut transmettre.
+5. S'il a un logo et des photos de son commerce à utiliser. Tu demandes AVANT de proposer un visuel — une carte à sa marque vaut mieux qu'une carte générique.
+Quand ces points sont couverts, déclenche "propose".
+
 TON RÔLE TECHNIQUE
-Tu dialogues normalement, ET quand une action concrète est utile tu la déclenches. Tu réponds TOUJOURS avec un objet JSON valide, sans texte autour :
+Tu dialogues, ET tu déclenches les actions concrètes. Tu réponds TOUJOURS avec un objet JSON valide, sans texte autour :
 {
   "reply": "<ta réponse au commerçant, courte et naturelle>",
   "action": <null ou une action ci-dessous>
 }
 
 ACTIONS possibles :
-- Proposer 3 cartes quand tu connais le secteur et l'ambiance :
+- Proposer 3 cartes, une fois l'entretien couvert :
   {"type":"propose","sector":"<un secteur de la liste>","tone":"chaud|neutre|froid"}
   chaud = chaleureux/tons chauds, neutre = élégant/tons neutres, froid = moderne/tons froids.
+- APPLIQUER une carte, c'est-à-dire la fabriquer pour de bon :
+  {"type":"apply","choice":<1, 2 ou 3>}
+  choice désigne l'une des trois propositions affichées, dans l'ordre.
+- Enregistrer le système choisi PAR LE COMMERÇANT : {"type":"set_mode","mode":"stamps|points"}
 - Régler le nombre de tampons :  {"type":"set_stamps","count":<1-24>}
 - Définir la récompense :        {"type":"set_reward","text":"<ex: Un café offert>"}
 Sinon : "action": null.
 
+FAIRE LA CARTE
+Quand le commerçant demande sa carte — "fais-moi la carte", "vas-y", "crée-la", "je te laisse choisir" —, tu ne te contentes pas de proposer : tu déclenches "apply". Si aucune proposition n'est encore affichée, "apply" en fabrique une directement à partir du secteur ; ajoute alors "sector" et "tone" à l'action :
+  {"type":"apply","choice":1,"sector":"Café","tone":"chaud"}
+Une demande de carte doit toujours se terminer par une carte, jamais par une question de plus.
+
 Secteurs valides : ${SECTORS.join(", ")}.
 
-Au premier message, souhaite la bienvenue et demande l'activité. Dès que tu as l'activité, propose une ambiance puis déclenche "propose". Après application, propose des ajustements (nombre de tampons, récompense).`;
+Au premier message, souhaite la bienvenue en une phrase et demande l'activité.`;
 
 interface InMsg { role: "user" | "assistant"; content: string }
 
@@ -193,11 +212,18 @@ export async function POST(req: Request) {
   }
 }
 
+type Tonalite = "chaud" | "neutre" | "froid";
+
 type AssistantAction =
-  | { type: "propose"; sector: string; tone: "chaud" | "neutre" | "froid" }
+  | { type: "propose"; sector: string; tone: Tonalite }
+  | { type: "apply"; choice: number; sector?: string; tone?: Tonalite }
+  | { type: "set_mode"; mode: "stamps" | "points" }
   | { type: "set_stamps"; count: number }
   | { type: "set_reward"; text: string }
   | null;
+
+const estTon = (v: unknown): v is Tonalite =>
+  v === "chaud" || v === "neutre" || v === "froid";
 
 function extractJson(text: string): { reply: string; action: AssistantAction } | null {
   const cleaned = text.replace(/```(?:json)?/g, "").trim();
@@ -216,8 +242,26 @@ function extractJson(text: string): { reply: string; action: AssistantAction } |
 function normalizeAction(a: unknown): AssistantAction {
   if (!a || typeof a !== "object") return null;
   const o = a as Record<string, unknown>;
-  if (o.type === "propose" && typeof o.sector === "string" && (o.tone === "chaud" || o.tone === "neutre" || o.tone === "froid")) {
+  if (o.type === "propose" && typeof o.sector === "string" && estTon(o.tone)) {
     return { type: "propose", sector: o.sector, tone: o.tone };
+  }
+  /* « Fais-moi la carte » doit aboutir à une carte.
+   *
+   * Le rang est ramené dans 1..3 plutôt que refusé : un modèle qui répond
+   * "choice": 0 demande la première, pas rien. Le secteur et l'ambiance sont
+   * facultatifs — ils ne servent qu'au cas où aucune proposition n'est encore
+   * affichée, et le client sait s'en passer s'il en a déjà. */
+  if (o.type === "apply") {
+    const rang = typeof o.choice === "number" && Number.isFinite(o.choice) ? o.choice : 1;
+    return {
+      type: "apply",
+      choice: Math.max(1, Math.min(3, Math.round(rang))),
+      ...(typeof o.sector === "string" && o.sector ? { sector: o.sector } : {}),
+      ...(estTon(o.tone) ? { tone: o.tone } : {}),
+    };
+  }
+  if (o.type === "set_mode" && (o.mode === "stamps" || o.mode === "points")) {
+    return { type: "set_mode", mode: o.mode };
   }
   if (o.type === "set_stamps" && typeof o.count === "number") {
     return { type: "set_stamps", count: Math.max(1, Math.min(24, Math.round(o.count))) };
