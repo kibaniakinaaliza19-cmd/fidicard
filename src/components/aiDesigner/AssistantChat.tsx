@@ -30,6 +30,10 @@ interface Msg {
    *  en lecture seule — contrairement à `proposals`, il n'y a rien à
    *  choisir : le modèle a conçu une carte, pas trois options. */
   cardApplied?: CardDoc;
+  /** Les informations minimales sont réunies mais aucune carte n'est encore
+   *  sortie ce tour-ci : un bouton pour la déclencher sans dépendre de ce
+   *  que le modèle choisit de faire du message suivant. */
+  proposerCreation?: boolean;
 }
 
 /** Blob de session `lib/fidiia`, opaque ici : le client le stocke et le
@@ -282,7 +286,15 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         setPhase("done");
         onStep(3);
       } else if (data.reply) {
-        add({ role: "assistant", text: data.reply });
+        // Les informations minimales sont réunies mais ce tour-ci n'a
+        // produit aucune carte (le moteur ne crée qu'au tour SUIVANT une
+        // fois creationAutorisee vrai) : le bouton permet de la déclencher
+        // tout de suite plutôt que d'attendre que le modèle y pense.
+        const pret = Boolean(
+          (fidiiaSession.current as { etat?: { creationAutorisee?: boolean } } | null)?.etat
+            ?.creationAutorisee,
+        );
+        add({ role: "assistant", text: data.reply, proposerCreation: pret });
       }
       if (phase === "activity") onStep(1);
     } catch {
@@ -290,6 +302,17 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     } finally {
       setBusy(false);
     }
+  }
+
+  // Filet de sécurité : les cinq informations minimales sont réunies, mais
+  // la production de la carte ne doit pas dépendre du bon vouloir du
+  // modèle au tour suivant. Le message est neutre — le moteur décide de la
+  // suite, ce bouton ne fait que provoquer ce tour suivant tout de suite.
+  function creerCarteMaintenant() {
+    if (busy) return;
+    const text = "Crée la carte maintenant.";
+    add({ role: "user", text });
+    runFidiia(text);
   }
 
   // « Régénérer » : le moteur ne garde pas de « autres versions » en réserve
@@ -502,6 +525,16 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
                     </button>
                   ))}
                 </div>
+              )}
+
+              {m.proposerCreation && (
+                <button
+                  onClick={creerCarteMaintenant}
+                  className="mt-2 cursor-pointer rounded-full px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
+                >
+                  Créer ma carte
+                </button>
               )}
 
               {m.proposals && (
