@@ -241,18 +241,40 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   }
 
   async function runAi(userText: string) {
-    const history = messages.filter((m) => m.text).map((m) => ({ role: m.role, content: m.text as string }));
-    history.push({ role: "user", content: userText });
+    /* L'historique est nettoyé AVANT de partir.
+     *
+     * Il se construisait à partir de l'état des messages sans garde-fou : une
+     * entrée sans texte, un contenu trop long ou une conversation qui dépasse
+     * la limite du serveur suffisaient à faire refuser l'appel — et le
+     * commerçant se retrouvait devant « Requête invalide » sans rien à faire.
+     * Le tri est ici, à la source, plutôt que dans un refus à l'arrivée. */
+    const history = messages
+      .map((m) => ({ role: m.role, content: typeof m.text === "string" ? m.text.trim() : "" }))
+      .filter((m) => m.content)
+      .map((m) => ({ ...m, content: m.content.slice(0, 4000) }));
+
+    history.push({ role: "user", content: userText.slice(0, 4000) });
+
+    // Les 39 derniers, plus celui qu'on vient d'écrire : le serveur en accepte
+    // 40. Une conversation longue perd son début, elle n'est jamais refusée.
+    const envoi = history.slice(-40);
     setBusy(true);
     try {
       const r = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: envoi }),
       });
       const data = await r.json();
       if (!r.ok || typeof data.reply !== "string") {
-        add({ role: "assistant", text: data.error || "Je n'ai pas pu répondre — réessayez." });
+        // Le motif du serveur est journalisé pour le développeur, mais ce
+        // n'est pas ce qu'on montre au commerçant : « Requête invalide » ne
+        // lui dit rien et ne lui donne rien à faire.
+        if (data?.error) console.warn("[FidiIA]", data.error);
+        add({
+          role: "assistant",
+          text: "Je n'ai pas pu répondre à l'instant. Reformulez, ou réessayez dans quelques secondes.",
+        });
         return;
       }
       add({ role: "assistant", text: data.reply });

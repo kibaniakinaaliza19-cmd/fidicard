@@ -49,6 +49,81 @@ Au premier message, souhaite la bienvenue et demande l'activité. Dès que tu as
 
 interface InMsg { role: "user" | "assistant"; content: string }
 
+/** Limites d'OpenAI, pas les nôtres : on tronque pour les respecter. */
+const MAX_MESSAGES = 40;
+const MAX_CARACTERES = 4000;
+
+/** Un corps illisible n'est pas une erreur fatale : c'est un corps vide. */
+async function lireCorps(req: Request): Promise<unknown> {
+  try {
+    return await req.json();
+  } catch {
+    return null;
+  }
+}
+
+function texte(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "";
+}
+
+/**
+ * Tout ce qui ressemble à un historique en devient un.
+ *
+ * Chaque entrée est réparée plutôt qu'examinée : le rôle inconnu devient
+ * « user » — c'est le commerçant qui parle, par défaut —, le contenu est
+ * converti en texte et tronqué, et ce qui reste vide est simplement écarté.
+ * Seuls les derniers messages sont gardés : couper la tête d'une conversation
+ * trop longue vaut mieux que la refuser en entier.
+ */
+function normaliserHistorique(corps: unknown): InMsg[] {
+  let brut: unknown = corps;
+
+  if (corps && typeof corps === "object" && !Array.isArray(corps)) {
+    const o = corps as Record<string, unknown>;
+    brut = o.messages ?? o.message ?? o.texte ?? o.text ?? o.historique ?? o.history;
+
+    // Dernier recours : aucun nom connu ne correspond. Plutôt que de refuser,
+    // on prend la première valeur qui ressemble à quelque chose à dire. Un
+    // client qui renomme son champ ne doit pas casser la conversation.
+    if (brut === undefined) {
+      brut =
+        Object.values(o).find((v) => Array.isArray(v) && v.length > 0) ??
+        Object.values(o).find((v) => typeof v === "string" && v.trim());
+    }
+  }
+
+  // Une simple phrase vaut un historique d'un seul message.
+  if (typeof brut === "string") {
+    const t = brut.trim().slice(0, MAX_CARACTERES);
+    return t ? [{ role: "user", content: t }] : [];
+  }
+
+  if (!Array.isArray(brut)) return [];
+
+  const propres: InMsg[] = [];
+  for (const e of brut) {
+    if (typeof e === "string") {
+      const t = e.trim().slice(0, MAX_CARACTERES);
+      if (t) propres.push({ role: "user", content: t });
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+
+    const o = e as Record<string, unknown>;
+    const contenu = texte(o.content ?? o.text ?? o.texte).trim().slice(0, MAX_CARACTERES);
+    if (!contenu) continue;
+
+    propres.push({
+      role: o.role === "assistant" ? "assistant" : "user",
+      content: contenu,
+    });
+  }
+
+  return propres.slice(-MAX_MESSAGES);
+}
+
 export function GET() {
   return Response.json({ available: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_API_KEY ? MODEL : null });
 }
@@ -58,50 +133,31 @@ export async function POST(req: Request) {
     return Response.json({ error: "Assistant IA non configuré (OPENAI_API_KEY absente)." }, { status: 503 });
   }
 
-  /* Le motif du refus, pas seulement le refus.
+  /* On répare, on ne rejette pas.
    *
-   * Six conditions différentes renvoyaient « Requête invalide. ». Depuis le
-   * navigateur, les six se ressemblaient : impossible de distinguer un corps
-   * mal formé d'un historique trop long ou d'un rôle inattendu. Chacune dit
-   * maintenant ce qu'elle a refusé, et le serveur le journalise — c'est ce qui
-   * permet de diagnostiquer sans deviner. Aucun de ces messages ne contient de
-   * donnée du commerçant, seulement la forme de la requête. */
-  let messages: InMsg[];
-  const refus = (motif: string) => {
-    console.warn(`[assistant] corps refusé : ${motif}`);
-    return Response.json({ error: `Requête invalide — ${motif}.` }, { status: 400 });
-  };
+   * Cette route renvoyait « Requête invalide. » dès qu'un détail du corps ne
+   * lui plaisait pas : un rôle inattendu, un historique d'un message de trop,
+   * un champ nommé autrement. Six conditions, un seul message, et le
+   * commerçant face à un mur — alors que dans tous ces cas il y avait bien une
+   * phrase exploitable dans la requête.
+   *
+   * Une route de conversation n'a aucune raison d'être pointilleuse sur la
+   * forme. Elle prend ce qui ressemble à un historique, jette ce qui est
+   * inutilisable, tronque ce qui dépasse, et parle au modèle. Elle ne refuse
+   * que s'il ne reste littéralement rien à dire — cas où le motif est écrit en
+   * clair plutôt que caché derrière un mot générique.
+   *
+   * Les formes acceptées : { messages: [...] }, { message: "..." },
+   * { messages: "..." }, et un tableau nu. Un client qui change de convention
+   * ne casse plus la conversation. */
+  const messages = normaliserHistorique(await lireCorps(req));
 
-  try {
-    let body: { messages?: unknown };
-    try {
-      body = await req.json();
-    } catch {
-      return refus("corps illisible, JSON attendu");
-    }
-
-    if (!Array.isArray(body.messages)) {
-      return refus(`champ « messages » absent ou pas un tableau (reçu : ${typeof body.messages})`);
-    }
-    if (body.messages.length === 0) return refus("historique vide");
-    if (body.messages.length > 40) {
-      return refus(`historique trop long (${body.messages.length} messages, 40 au maximum)`);
-    }
-
-    messages = body.messages as InMsg[];
-    for (const [i, m] of messages.entries()) {
-      if (m?.role !== "user" && m?.role !== "assistant") {
-        return refus(`message ${i} : rôle « ${String(m?.role)} » inattendu`);
-      }
-      if (typeof m.content !== "string") {
-        return refus(`message ${i} : « content » n'est pas une chaîne (${typeof m.content})`);
-      }
-      if (m.content.length > 4000) {
-        return refus(`message ${i} : ${m.content.length} caractères, 4000 au maximum`);
-      }
-    }
-  } catch (e) {
-    return refus(`lecture impossible (${e instanceof Error ? e.name : "inconnu"})`);
+  if (messages.length === 0) {
+    console.warn("[assistant] aucun message exploitable dans le corps reçu");
+    return Response.json(
+      { error: "Aucun message reçu — retapez votre phrase." },
+      { status: 400 },
+    );
   }
 
   try {
