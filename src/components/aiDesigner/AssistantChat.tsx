@@ -15,7 +15,8 @@ import {
   TONES,
   type Tone,
 } from "@/lib/aiDesigner/conversation";
-import type { TemplateEntry } from "@/data/templateCatalog";
+import { buildFromSpec, type TemplateEntry, type TemplateSpec } from "@/data/templateCatalog";
+import { iconRegistry } from "@/lib/icons";
 
 type Chip = { label: string; kind: "sector" | "tone"; value: string };
 interface Msg {
@@ -28,6 +29,10 @@ interface Msg {
 
 let mid = 0;
 const nextId = () => `m${++mid}`;
+
+// Un compteur, pas une horloge : Date.now() est impur aux yeux du moteur de
+// rendu, et l'identifiant n'a besoin que d'être unique dans la session.
+let dessinNo = 0;
 
 // libellé court à écrire DANS le tampon du dernier palier
 function shortReward(reward: string): string {
@@ -219,6 +224,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
 
   // --- mode « vrai modèle » : le serveur mène la conversation ---
   type Action =
+    | { type: "design"; spec: Omit<TemplateSpec, "id"> }
     | { type: "propose"; sector: string; tone: string }
     | { type: "apply"; choice: number; sector?: string; tone?: string }
     | { type: "set_mode"; mode: "stamps" | "points" }
@@ -243,9 +249,46 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     return proposals;
   }
 
+  /* La carte dessinée par le modèle.
+   *
+   * Rien n'est choisi dans le catalogue ici : la spécification arrive du
+   * modèle, buildFromSpec en fait un document complet et modifiable, et la
+   * carte qui en sort n'appartient qu'à ce commerçant. C'était tout le sujet —
+   * proposalsFor() ne générait rien, elle filtrait des cartes écrites d'avance,
+   * et deux cafés repartaient avec la même.
+   *
+   * Le nom d'icône est la seule chose que le serveur ne pouvait pas vérifier :
+   * il n'a pas le registre sous la main. On le fait ici, au dernier moment.
+   */
+  function poserSpec(brut: Omit<TemplateSpec, "id">) {
+    const goal = Number.isFinite(brut.goal) && brut.goal > 0 ? Math.round(brut.goal) : 10;
+    const spec: TemplateSpec = {
+      ...brut,
+      id: `ia-${++dessinNo}`,
+      goal,
+      // La route le calcule déjà, mais la carte imprime ce nombre : sans garde
+      // ici, un dessin sans `filled` affichait « undefined / 350 points » en
+      // toutes lettres sur la carte du commerçant.
+      filled: Number.isFinite(brut.filled)
+        ? Math.max(0, Math.min(goal, Math.round(brut.filled)))
+        : Math.max(1, Math.min(goal - 1, Math.round(goal * 0.4))),
+      icon: brut.icon in iconRegistry ? brut.icon : "Gift",
+    };
+    poserCarte({
+      id: spec.id,
+      name: spec.name,
+      sector: spec.sector,
+      family: spec.family,
+      build: () => buildFromSpec(spec),
+      loyalty: { mode: spec.loyalty, total: spec.goal, reward: spec.reward, icon: spec.icon },
+    });
+  }
+
   function execAction(action: Action) {
     if (!action) return;
-    if (action.type === "propose") {
+    if (action.type === "design") {
+      poserSpec(action.spec);
+    } else if (action.type === "propose") {
       // Le texte n'est pas décoratif : sans lui, trois images arrivaient sans
       // que rien n'indique qu'il faut cliquer dessus pour que la carte existe.
       montrer(action.sector, action.tone, "Cliquez-en une pour l'appliquer — ou dites-moi laquelle.");
@@ -318,8 +361,14 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         return;
       }
       add({ role: "assistant", text: data.reply });
-      execAction(data.action ?? null);
+      /* L'avancement d'abord, l'action ensuite.
+       *
+       * Dans l'autre ordre, une action qui pose la carte appelait onStep(3),
+       * puis cette ligne le ramenait à 1 — `phase` étant la valeur figée du
+       * rendu, toujours « activity » au premier échange. La carte était
+       * fabriquée et l'en-tête annonçait « Décrire mon activité ». */
       if (phase === "activity") onStep(1);
+      execAction(data.action ?? null);
     } catch {
       add({ role: "assistant", text: "Connexion à l'assistant impossible. Réessayez dans un instant." });
     } finally {

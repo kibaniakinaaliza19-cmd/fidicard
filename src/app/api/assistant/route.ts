@@ -20,6 +20,20 @@ const SECTORS = [
   "Opticien", "Librairie", "Animalerie", "Tattoo", "Boutique", "Formations",
 ];
 
+/* Les noms d'icônes que le rendu sait dessiner. Recopiés plutôt qu'importés :
+   `@/lib/icons` tire lucide-react entier, et une route d'API n'a aucune raison
+   de charger des composants React pour valider une chaîne. Le client, lui,
+   revérifie contre le vrai registre avant de construire la carte. */
+const ICONES = [
+  "Gift", "Sparkles", "Trophy", "Tag", "Coffee", "UtensilsCrossed", "Dumbbell",
+  "Cookie", "ShoppingBag", "BedDouble", "Scissors", "Car", "Building2",
+  "Briefcase", "Star", "Heart", "Droplet", "Award", "Crown", "Pizza",
+  "IceCream", "Wine", "Beer", "Croissant", "CakeSlice", "Flower", "Leaf",
+  "Sun", "Moon", "Zap", "Flame", "Diamond", "Gem", "BadgeCheck", "Percent",
+  "Ticket", "ShoppingCart", "Store", "Wrench", "Stethoscope", "Pill", "Bike",
+  "Music", "Camera", "Palette", "PawPrint", "Fish", "Bird", "Smile",
+];
+
 const SYSTEM = `Tu es FidiIA, l'experte en cartes de fidélité, branding et fidélisation client de FidiCard. Tu crées avec le commerçant sa carte de fidélité digitale.
 
 RÈGLES DE STYLE — elles priment sur tout le reste
@@ -30,13 +44,20 @@ RÈGLES DE STYLE — elles priment sur tout le reste
 - Tu ne dis JAMAIS que tu es une IA générique, ChatGPT ou OpenAI. Tu es "FidiIA".
 - Tu ne parles que de : cartes de fidélité, design, tampons/points, récompenses, Wallet, marketing local. Tu recentres poliment si on s'écarte.
 
+PARLE COMME UN HUMAIN, PAS COMME UN LOGICIEL
+Le commerçant n'est pas développeur. Il ne connaît pas ton vocabulaire interne.
+- Tu ne dis JAMAIS "tampons ou points ?". Tu demandes ouvertement : "Quel système de fidélité aimeriez-vous mettre en place ?" et tu le laisses répondre avec ses mots.
+- S'il répond "une carte à tamponner", "une case à chaque café", "il cumule des points", "10 achats = 1 offert" : tu comprends tout seul et tu enregistres. Tu ne lui fais pas répéter dans TON vocabulaire.
+- S'il hésite ou demande conseil, ALORS seulement tu expliques les deux en une phrase chacune, et tu redonnes la main. Tu ne tranches jamais à sa place.
+- Pareil partout : pas de "secteur", pas de "palier", pas de "gradient", pas de "template". Son métier, sa récompense, ses couleurs.
+
 L'ENTRETIEN — dans cet ordre, une question par tour
-1. L'activité (café, salon, garage…).
-2. Le système de fidélité : tampons ou points ? TU NE CHOISIS PAS À SA PLACE. Tu expliques la différence en une phrase, puis tu demandes. Les tampons : une case par passage, simple et visuel. Les points : un point par euro dépensé, plus fin pour les paniers variables. Dès qu'il répond, déclenche set_mode.
-3. La récompense au bout, et après combien de passages ou de points.
-4. Les couleurs de son commerce, ou l'ambiance qu'il veut transmettre.
-5. S'il a un logo et des photos de son commerce à utiliser. Tu demandes AVANT de proposer un visuel — une carte à sa marque vaut mieux qu'une carte générique.
-Quand ces points sont couverts, déclenche "propose".
+1. Son activité, et le nom de son commerce.
+2. Le système de fidélité, demandé ouvertement comme ci-dessus. Dès que tu as compris, déclenche set_mode.
+3. La récompense au bout, et au bout de combien.
+4. Ses couleurs, ou l'ambiance qu'il veut transmettre.
+5. S'il a un logo et des photos de son commerce à utiliser.
+Quand ces points sont couverts, tu DESSINES la carte avec "design".
 
 TON RÔLE TECHNIQUE
 Tu dialogues, ET tu déclenches les actions concrètes. Tu réponds TOUJOURS avec un objet JSON valide, sans texte autour :
@@ -45,24 +66,45 @@ Tu dialogues, ET tu déclenches les actions concrètes. Tu réponds TOUJOURS ave
   "action": <null ou une action ci-dessous>
 }
 
-ACTIONS possibles :
-- Proposer 3 cartes, une fois l'entretien couvert :
-  {"type":"propose","sector":"<un secteur de la liste>","tone":"chaud|neutre|froid"}
-  chaud = chaleureux/tons chauds, neutre = élégant/tons neutres, froid = moderne/tons froids.
-- APPLIQUER une carte, c'est-à-dire la fabriquer pour de bon :
-  {"type":"apply","choice":<1, 2 ou 3>}
-  choice désigne l'une des trois propositions affichées, dans l'ordre.
-- Enregistrer le système choisi PAR LE COMMERÇANT : {"type":"set_mode","mode":"stamps|points"}
+ACTION PRINCIPALE — TU DESSINES LA CARTE TOI-MÊME
+C'est toi la designer. Tu n'as pas de catalogue, tu ne choisis pas dans une liste : tu écris la carte de ce commerçant-là, d'après ce qu'il vient de te raconter. Deux cafés différents doivent repartir avec deux cartes différentes.
+{"type":"design","spec":{
+  "name":"<nom court de ta création, ex: Ardoise Matin>",
+  "business":"<LE NOM DU COMMERCE, en capitales>",
+  "tagline":"<3 à 5 mots, sa promesse>",
+  "sector":"<un secteur de la liste>",
+  "loyalty":"tampons|points",
+  "goal":<tampons: 1 à 24 | points: 50 à 2000>,
+  "reward":"<la récompense, telle qu'il l'a dite>",
+  "icon":"<un nom d'icône de la liste>",
+  "bg":["<hex>","<hex>"],
+  "fg":"<hex, le titre>",
+  "sub":"<hex, le sous-titre>",
+  "accent":"<hex, les tampons>",
+  "layout":"classic|centered|split|banner",
+  "family":"minimal|bancaire|photo|premium|colore|vintage|motif|gradient"
+}}
+
+RÈGLES DE DESIGN
+- Les couleurs viennent de SON commerce. S'il a dit "vert et bois", tu pars de là. Sinon, de son métier et de l'ambiance décrite.
+- "bg" peut être une paire pour un dégradé, ou un seul hex pour un aplat.
+- fg et sub doivent rester LISIBLES sur bg : fond sombre → texte clair, fond clair → texte foncé. C'est non négociable.
+- accent tranche sur le fond : c'est ce qui se remplit à chaque passage.
+- tagline : pas de slogan creux. Ce qu'il fait, en cinq mots.
+
+AUTRES ACTIONS :
+- Enregistrer le système compris chez lui : {"type":"set_mode","mode":"stamps|points"}
 - Régler le nombre de tampons :  {"type":"set_stamps","count":<1-24>}
 - Définir la récompense :        {"type":"set_reward","text":"<ex: Un café offert>"}
+- Retoucher la carte déjà posée : renvoie un "design" complet avec la modification demandée.
 Sinon : "action": null.
 
 FAIRE LA CARTE
-Quand le commerçant demande sa carte — "fais-moi la carte", "vas-y", "crée-la", "je te laisse choisir" —, tu ne te contentes pas de proposer : tu déclenches "apply". Si aucune proposition n'est encore affichée, "apply" en fabrique une directement à partir du secteur ; ajoute alors "sector" et "tone" à l'action :
-  {"type":"apply","choice":1,"sector":"Café","tone":"chaud"}
-Une demande de carte doit toujours se terminer par une carte, jamais par une question de plus.
+Quand le commerçant demande sa carte — "fais-moi la carte", "vas-y", "crée-la", "je te laisse choisir" —, tu déclenches "design". S'il te manque une information, tu prends une décision de designer et tu la lui montres : il corrigera. Une demande de carte se termine par une carte, jamais par une question de plus.
 
 Secteurs valides : ${SECTORS.join(", ")}.
+
+Icônes valides : ${ICONES.join(", ")}.
 
 Au premier message, souhaite la bienvenue en une phrase et demande l'activité.`;
 
@@ -190,7 +232,10 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 600,
+        // Un dessin complet — quinze champs — tient mal dans 600 jetons avec
+        // la réponse au commerçant par-dessus : tronqué, le JSON devient
+        // illisible et la carte ne se fait pas.
+        max_tokens: 1400,
         temperature: 0.6,
         response_format: { type: "json_object" },
         messages: [{ role: "system", content: SYSTEM }, ...messages],
@@ -214,7 +259,96 @@ export async function POST(req: Request) {
 
 type Tonalite = "chaud" | "neutre" | "froid";
 
+/** Le dessin que le modèle envoie, une fois vérifié. */
+export interface CarteSpec {
+  name: string;
+  business: string;
+  tagline: string;
+  sector: string;
+  loyalty: "tampons" | "points";
+  goal: number;
+  filled: number;
+  reward: string;
+  icon: string;
+  bg: [string, string] | string;
+  fg: string;
+  sub: string;
+  accent: string;
+  layout: "classic" | "centered" | "split" | "banner";
+  family: string;
+}
+
+const FAMILLES = ["minimal", "bancaire", "photo", "premium", "colore", "vintage", "motif", "gradient"];
+const DISPOSITIONS = ["classic", "centered", "split", "banner"];
+
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+/** Une couleur invalide n'annule pas la carte : elle prend le repli. */
+function couleur(v: unknown, repli: string): string {
+  return typeof v === "string" && HEX.test(v.trim()) ? v.trim().toLowerCase() : repli;
+}
+
+function mot(v: unknown, repli: string, max: number): string {
+  const t = typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, max) : "";
+  return t || repli;
+}
+
+/**
+ * Le dessin du modèle, ramené dans les clous.
+ *
+ * On répare plutôt que de refuser, comme pour le corps de la requête : un
+ * commerçant n'a rien à faire d'un refus parce qu'une couleur manquait d'un
+ * dièse. Seule la structure est exigée — le reste prend un repli lisible.
+ *
+ * Les bornes sur `goal` ne sont pas cosmétiques : une grille de 60 tampons ne
+ * tient pas sur une carte, et un objectif de 3 points n'a pas de sens. Elles
+ * diffèrent selon le système, ce qui est précisément la confusion qui avait
+ * produit des objectifs hors bornes la dernière fois.
+ */
+function normaliserSpec(v: unknown): CarteSpec | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+
+  const loyalty = o.loyalty === "points" ? "points" : "tampons";
+
+  const brut = typeof o.goal === "number" && Number.isFinite(o.goal) ? Math.round(o.goal) : 0;
+  const goal =
+    loyalty === "points"
+      ? Math.max(50, Math.min(2000, brut || 200))
+      : Math.max(1, Math.min(24, brut || 10));
+
+  // L'aperçu montre une carte entamée, jamais vide ni pleine : une grille
+  // vierge ne laisse pas voir à quoi ressemble un tampon posé.
+  const filled = Math.max(1, Math.min(goal - 1, Math.round(goal * 0.4)));
+
+  const bgBrut = o.bg;
+  const bg: [string, string] | string = Array.isArray(bgBrut)
+    ? [couleur(bgBrut[0], "#1a1a1b"), couleur(bgBrut[1], "#050505")]
+    : couleur(bgBrut, "#1a1a1b");
+
+  return {
+    name: mot(o.name, "Votre carte", 40),
+    business: mot(o.business, "MON COMMERCE", 32),
+    tagline: mot(o.tagline, "", 48),
+    sector: mot(o.sector, "Boutique", 32),
+    loyalty,
+    goal,
+    filled,
+    reward: mot(o.reward, "Une récompense offerte", 60),
+    // Le nom d'icône n'est pas vérifié contre le registre ici : le client le
+    // fait, avec le vrai registre sous la main.
+    icon: mot(o.icon, "Gift", 24).replace(/[^A-Za-z0-9]/g, ""),
+    bg,
+    fg: couleur(o.fg, "#f5f5f5"),
+    sub: couleur(o.sub, "#b0b0b0"),
+    accent: couleur(o.accent, "#ff5a1f"),
+    layout: (DISPOSITIONS.includes(String(o.layout)) ? o.layout : "classic") as CarteSpec["layout"],
+    family: FAMILLES.includes(String(o.family)) ? String(o.family) : "minimal",
+  };
+}
+
 type AssistantAction =
+  | { type: "design"; spec: CarteSpec }
   | { type: "propose"; sector: string; tone: Tonalite }
   | { type: "apply"; choice: number; sector?: string; tone?: Tonalite }
   | { type: "set_mode"; mode: "stamps" | "points" }
@@ -242,6 +376,10 @@ function extractJson(text: string): { reply: string; action: AssistantAction } |
 function normalizeAction(a: unknown): AssistantAction {
   if (!a || typeof a !== "object") return null;
   const o = a as Record<string, unknown>;
+  if (o.type === "design") {
+    const spec = normaliserSpec(o.spec);
+    return spec ? { type: "design", spec } : null;
+  }
   if (o.type === "propose" && typeof o.sector === "string" && estTon(o.tone)) {
     return { type: "propose", sector: o.sector, tone: o.tone };
   }
