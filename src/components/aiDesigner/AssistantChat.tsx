@@ -98,12 +98,27 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  // détecte si un vrai modèle est configuré côté serveur
+  /* Sonde : un vrai modèle est-il configuré côté serveur ?
+   *
+   * La promesse est gardée, pas seulement son résultat. `aiLive` vaut `null`
+   * tant que la réponse n'est pas arrivée, et `null` est faux : sans cette
+   * référence, tout message envoyé pendant ce laps partait dans le scénario
+   * local, silencieusement, alors qu'un modèle était bien branché.
+   *
+   * Le laps n'est pas théorique. En développement, Next compile chaque route
+   * à sa première requête : ce GET peut prendre plusieurs secondes sur un
+   * serveur qui vient de démarrer. Le temps de lire l'écran et de taper une
+   * phrase, la course est perdue — la conversation s'ouvre sur le scénario
+   * scripté, puis bascule sur le modèle au message suivant. Deux régimes dans
+   * le même fil, sans que rien ne l'explique. */
+  const sonde = useRef<Promise<boolean> | null>(null);
+
   useEffect(() => {
-    fetch("/api/assistant")
+    sonde.current = fetch("/api/assistant")
       .then((r) => r.json())
-      .then((d) => setAiLive(Boolean(d.available)))
-      .catch(() => setAiLive(false));
+      .then((d) => Boolean(d.available))
+      .catch(() => false);
+    sonde.current.then(setAiLive);
   }, []);
 
   const add = (m: Omit<Msg, "id">) => setMessages((prev) => [...prev, { id: nextId(), ...m }]);
@@ -250,7 +265,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     }
   }
 
-  function submit(raw?: string) {
+  async function submit(raw?: string) {
     const text = (raw ?? input).trim();
     if (!text || busy) return;
     setInput("");
@@ -262,7 +277,18 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       setMode(asked);
       if (phase === "done") useLoyaltyStore.getState().setMode(asked);
     }
-    if (aiLive) {
+
+    // On attend de SAVOIR avant de choisir le régime. Tant que la sonde n'a
+    // pas répondu, aucun message ne part dans le repli : mieux vaut une
+    // seconde d'attente visible qu'une réponse scriptée qui fait illusion.
+    let vivant = aiLive;
+    if (vivant === null) {
+      setBusy(true);
+      vivant = (await sonde.current) ?? false;
+      setBusy(false);
+    }
+
+    if (vivant) {
       runAi(text);
       return;
     }

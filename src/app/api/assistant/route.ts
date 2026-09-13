@@ -58,18 +58,50 @@ export async function POST(req: Request) {
     return Response.json({ error: "Assistant IA non configuré (OPENAI_API_KEY absente)." }, { status: 503 });
   }
 
+  /* Le motif du refus, pas seulement le refus.
+   *
+   * Six conditions différentes renvoyaient « Requête invalide. ». Depuis le
+   * navigateur, les six se ressemblaient : impossible de distinguer un corps
+   * mal formé d'un historique trop long ou d'un rôle inattendu. Chacune dit
+   * maintenant ce qu'elle a refusé, et le serveur le journalise — c'est ce qui
+   * permet de diagnostiquer sans deviner. Aucun de ces messages ne contient de
+   * donnée du commerçant, seulement la forme de la requête. */
   let messages: InMsg[];
+  const refus = (motif: string) => {
+    console.warn(`[assistant] corps refusé : ${motif}`);
+    return Response.json({ error: `Requête invalide — ${motif}.` }, { status: 400 });
+  };
+
   try {
-    const body = await req.json();
-    messages = body.messages;
-    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 40) throw new Error("bad");
-    for (const m of messages) {
-      if ((m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || m.content.length > 4000) {
-        throw new Error("bad");
+    let body: { messages?: unknown };
+    try {
+      body = await req.json();
+    } catch {
+      return refus("corps illisible, JSON attendu");
+    }
+
+    if (!Array.isArray(body.messages)) {
+      return refus(`champ « messages » absent ou pas un tableau (reçu : ${typeof body.messages})`);
+    }
+    if (body.messages.length === 0) return refus("historique vide");
+    if (body.messages.length > 40) {
+      return refus(`historique trop long (${body.messages.length} messages, 40 au maximum)`);
+    }
+
+    messages = body.messages as InMsg[];
+    for (const [i, m] of messages.entries()) {
+      if (m?.role !== "user" && m?.role !== "assistant") {
+        return refus(`message ${i} : rôle « ${String(m?.role)} » inattendu`);
+      }
+      if (typeof m.content !== "string") {
+        return refus(`message ${i} : « content » n'est pas une chaîne (${typeof m.content})`);
+      }
+      if (m.content.length > 4000) {
+        return refus(`message ${i} : ${m.content.length} caractères, 4000 au maximum`);
       }
     }
-  } catch {
-    return Response.json({ error: "Requête invalide." }, { status: 400 });
+  } catch (e) {
+    return refus(`lecture impossible (${e instanceof Error ? e.name : "inconnu"})`);
   }
 
   try {
