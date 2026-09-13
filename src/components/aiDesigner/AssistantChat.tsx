@@ -106,6 +106,15 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   // Session `lib/fidiia` en cours, renvoyée à chaque requête. Une ref, pas un
   // state : elle ne pilote aucun rendu, elle ne fait que voyager.
   const fidiiaSession = useRef<FidiiaSession>(null);
+  // La promesse de la sonde, gardée telle quelle — pas seulement son
+  // résultat dans `aiLive`. `aiLive` vaut `null` tant qu'elle n'a pas
+  // répondu, et `null` est faux : un message envoyé pendant ce laps
+  // basculerait sur le scénario local en silence, alors qu'un modèle est
+  // peut-être bien branché. En développement, ce GET peut prendre plusieurs
+  // secondes (Next compile la route à la première requête) — largement le
+  // temps de lire l'écran et taper une phrase. `submit` attend cette
+  // promesse plutôt que de trancher sur un état encore inconnu.
+  const sonde = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
     // Pas de défilement tant que la conversation n'a pas commencé : sinon
@@ -121,10 +130,11 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   // qui ne répond pas est une panne : elle doit se voir à l'écran, pas
   // basculer en silence sur le scénario local comme si de rien n'était.
   useEffect(() => {
-    fetch("/api/assistant")
+    sonde.current = fetch("/api/assistant")
       .then((r) => r.json())
       .then((d) => {
-        setAiLive(Boolean(d.available));
+        const vivant = Boolean(d.available);
+        setAiLive(vivant);
         if (d.configured && !d.available) {
           setAiDown(true);
           setMessages((prev) => [
@@ -138,8 +148,12 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
             },
           ]);
         }
+        return vivant;
       })
-      .catch(() => setAiLive(false));
+      .catch(() => {
+        setAiLive(false);
+        return false;
+      });
   }, []);
 
   const add = (m: Omit<Msg, "id">) => setMessages((prev) => [...prev, { id: nextId(), ...m }]);
@@ -282,7 +296,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     runFidiia(text);
   }
 
-  function submit(raw?: string) {
+  async function submit(raw?: string) {
     const text = (raw ?? input).trim();
     if (!text || busy) return;
     setInput("");
@@ -294,7 +308,20 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       setMode(asked);
       if (phase === "done") useLoyaltyStore.getState().setMode(asked);
     }
-    if (aiLive) {
+
+    // On attend de SAVOIR avant de choisir le régime. `aiLive` à `null`
+    // signifie « pas encore su », pas « pas de modèle » : y répondre par le
+    // scénario local ferait perdre la course à un modèle pourtant branché,
+    // en silence. Mieux vaut un court instant d'attente visible (`busy`)
+    // qu'une réponse scriptée qui fait illusion.
+    let vivant = aiLive;
+    if (vivant === null) {
+      setBusy(true);
+      vivant = (await sonde.current) ?? false;
+      setBusy(false);
+    }
+
+    if (vivant) {
       runFidiia(text);
       return;
     }

@@ -89,27 +89,33 @@ interface PostBody {
   session?: SessionBlob;
 }
 
-function validerCorps(brut: unknown): PostBody | null {
-  if (!brut || typeof brut !== "object") return null;
+type ValidationCorps = { ok: true; valeur: PostBody } | { ok: false; motif: string };
+
+// Un seul message « Requête invalide. » côté client masquait laquelle des
+// conditions avait échoué — indiagnosticable depuis le navigateur. Le motif
+// précis part maintenant dans le journal serveur (jamais dans la réponse :
+// on ne débogue pas le client avec la forme exacte du contrat serveur).
+function validerCorps(brut: unknown): ValidationCorps {
+  if (!brut || typeof brut !== "object") return { ok: false, motif: "corps absent ou non objet" };
   const o = brut as Record<string, unknown>;
-  if (typeof o.message !== "string" || !o.message.trim() || o.message.length > 4000) return null;
+  if (typeof o.message !== "string") return { ok: false, motif: "message absent ou non chaîne (ancien format « messages[] » ?)" };
+  if (!o.message.trim()) return { ok: false, motif: "message vide" };
+  if (o.message.length > 4000) return { ok: false, motif: `message trop long (${o.message.length} car.)` };
   const session = o.session;
-  if (session !== undefined && (typeof session !== "object" || session === null)) return null;
+  if (session !== undefined && (typeof session !== "object" || session === null)) {
+    return { ok: false, motif: "session présente mais non objet" };
+  }
   const s = session as SessionBlob | undefined;
   if (s?.historique !== undefined) {
-    if (!Array.isArray(s.historique) || s.historique.length > 60) return null;
-    for (const m of s.historique) {
-      if (
-        !m ||
-        (m.role !== "user" && m.role !== "assistant") ||
-        typeof m.content !== "string" ||
-        m.content.length > 4000
-      ) {
-        return null;
+    if (!Array.isArray(s.historique)) return { ok: false, motif: "session.historique non tableau" };
+    if (s.historique.length > 60) return { ok: false, motif: `session.historique trop long (${s.historique.length} messages)` };
+    for (const [i, m] of s.historique.entries()) {
+      if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || m.content.length > 4000) {
+        return { ok: false, motif: `session.historique[${i}] invalide` };
       }
     }
   }
-  return { message: o.message, session: s };
+  return { ok: true, valeur: { message: o.message, session: s } };
 }
 
 /** Extrait le code HTTP OpenAI embarqué dans le message d'erreur du provider. */
@@ -119,13 +125,17 @@ function statutDepuisErreur(err: unknown): number | null {
 }
 
 export async function POST(req: Request) {
-  let corps: PostBody | null;
+  let validation: ValidationCorps;
   try {
-    corps = validerCorps(await req.json());
-  } catch {
-    corps = null;
+    validation = validerCorps(await req.json());
+  } catch (err) {
+    validation = { ok: false, motif: `JSON illisible : ${err instanceof Error ? err.message : "erreur"}` };
   }
-  if (!corps) return Response.json({ error: "Requête invalide." }, { status: 400 });
+  if (!validation.ok) {
+    console.log(JSON.stringify({ scope: "assistant.validation", event: "rejet", motif: validation.motif, at: new Date().toISOString() }));
+    return Response.json({ error: "Requête invalide." }, { status: 400 });
+  }
+  const corps = validation.valeur;
 
   let session;
   try {
