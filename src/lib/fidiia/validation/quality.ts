@@ -6,7 +6,7 @@
 // avertissement : elle est corrigée ou remplacée.
 
 import type { Carte } from "./schemas.ts";
-import { LIBELLE_COURT_MAX, OBJECTIF_MAX, OBJECTIF_MIN } from "./schemas.ts";
+import { bornesObjectif, LIBELLE_COURT_MAX } from "./schemas.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
 import { estVerrouille } from "../state/sessionMemory.ts";
 
@@ -109,9 +109,10 @@ export function aucunCalqueTampon(c: Carte): Verdict {
 
 export function objectifDansBornes(c: Carte): Verdict {
   const o = c.programme.objectif;
-  return o >= OBJECTIF_MIN && o <= OBJECTIF_MAX
+  const { min, max } = bornesObjectif(c.programme.mode);
+  return o >= min && o <= max
     ? ok("objectif-bornes")
-    : ko("objectif-bornes", `objectif ${o} hors de l'intervalle ${OBJECTIF_MIN}-${OBJECTIF_MAX}`);
+    : ko("objectif-bornes", `objectif ${o} hors de l'intervalle ${min}-${max} pour le mode ${c.programme.mode}`);
 }
 
 export function paliersSousObjectif(c: Carte): Verdict {

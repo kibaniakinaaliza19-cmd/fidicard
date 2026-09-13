@@ -32,9 +32,25 @@ export type Cible = z.infer<typeof CibleSchema>;
 // clair — un test vérifie qu'aucun chiffre du contrat ne diverge de cette
 // liste. Voir __tests__/prompts.test.ts.
 
-/** Bornes reprises du moteur de fidélité : objectif entre 1 et 30. */
-export const OBJECTIF_MIN = 1;
-export const OBJECTIF_MAX = 30;
+/**
+ * Bornes de l'objectif, par mode — pas une seule borne pour les deux : un
+ * programme à tampons compte des passages, peu nombreux, lisibles sur une
+ * grille (1 à 30) ; un programme à points cumule un montant, nécessairement
+ * plus grand (50 à 1000). Un programme de points à 30 points n'existe pas
+ * dans la réalité du corpus. Une borne unique a longtemps fait rejeter en
+ * silence toute carte à points construite depuis une suggestion du corpus
+ * (272 des 864 modèles annoncent plusieurs centaines de points).
+ */
+export const OBJECTIF_MIN_TAMPONS = 1;
+export const OBJECTIF_MAX_TAMPONS = 30;
+export const OBJECTIF_MIN_POINTS = 50;
+export const OBJECTIF_MAX_POINTS = 1000;
+
+export function bornesObjectif(mode: ModeFidelite): { min: number; max: number } {
+  return mode === "points"
+    ? { min: OBJECTIF_MIN_POINTS, max: OBJECTIF_MAX_POINTS }
+    : { min: OBJECTIF_MIN_TAMPONS, max: OBJECTIF_MAX_TAMPONS };
+}
 /** Le libellé court s'écrit DANS le tampon : 8 caractères au maximum. */
 export const LIBELLE_COURT_MAX = 8;
 /** Nombre de paliers acceptés dans une action `paliers`. */
@@ -50,7 +66,9 @@ export const REPLY_MAX = 2000;
 export const NOM_MAX = 60;
 
 export const PalierSchema = z.object({
-  position: z.number().int().min(1).max(OBJECTIF_MAX),
+  // Plafond large (le max des deux modes) : la borne précise selon le mode
+  // se vérifie face à l'objectif réel, pas ici — voir paliersSousObjectif.
+  position: z.number().int().min(1).max(OBJECTIF_MAX_POINTS),
   label: z.string().min(1).max(LIBELLE_COURT_MAX),
   description: z.string().min(1).max(TEXTE_MAX),
 });
@@ -80,7 +98,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("objectif"),
-    valeur: z.number().int().min(OBJECTIF_MIN).max(OBJECTIF_MAX),
+    // Borne large ici (union des deux modes) : la validation Zod ne connaît
+    // pas le mode déjà choisi par le commerçant. La borne précise du mode
+    // se vérifie dans engine/actions.ts, qui a accès à l'état.
+    valeur: z.number().int().min(OBJECTIF_MIN_TAMPONS).max(OBJECTIF_MAX_POINTS),
   }),
   z.object({
     type: z.literal("paliers"),
@@ -137,7 +158,10 @@ export type Calque = z.infer<typeof CalqueSchema>;
 
 export const ProgrammeSchema = z.object({
   mode: ModeFideliteSchema,
-  objectif: z.number().int().min(OBJECTIF_MIN).max(OBJECTIF_MAX),
+  // Borne large ici aussi : la borne précise selon le mode est un contrôle
+  // qualité (quality.ts:objectifDansBornes, déjà mode-aware), pas une règle
+  // de forme — même séparation que zoneCoherenteAvecLeMode.
+  objectif: z.number().int().min(OBJECTIF_MIN_TAMPONS).max(OBJECTIF_MAX_POINTS),
   paliers: z.array(PalierSchema).max(PALIERS_MAX),
   recompense: RecompenseSchema,
 });

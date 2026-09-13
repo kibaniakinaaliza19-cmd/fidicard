@@ -26,6 +26,11 @@
 // ad hoc de l'action `nom` en v1.2.0) par le texte long réel, qui intègre
 // déjà les sept actions avec interdiction explicite de deviner le nom.
 //
+// v2.2.0 : l'objectif a deux bornes, pas une — 1 à 30 en tampons, 50 à 1000
+// en points (schemas.ts:bornesObjectif). Une borne unique à 30 avait fait
+// rejeter en silence toute carte à points construite depuis une suggestion
+// du corpus (272 des 864 modèles annoncent plusieurs centaines de points).
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -40,7 +45,7 @@
 // librement. __tests__/prompts.test.ts refuse tout nombre qui ne correspond
 // à aucune borne déclarée dans schemas.ts.
 
-export const CONTRACT_VERSION = "2.1.0";
+export const CONTRACT_VERSION = "2.2.0";
 
 export const CONTRACT = `## Format de réponse
 
@@ -55,7 +60,7 @@ Les sept actions, avec leur syntaxe exacte :
   proposer     { "type":"proposer", "secteur":"<secteur>",
                  "ambiance":"chaud|neutre|froid" }
   mode         { "type":"mode", "mode":"stamps|points" }
-  objectif     { "type":"objectif", "valeur":<1 à 30> }
+  objectif     { "type":"objectif", "valeur":<1 à 30 en tampons, 50 à 1000 en points> }
   paliers      { "type":"paliers", "paliers":[
                    { "position":<n>, "label":"<≤8 car.>",
                      "description":"<texte>" } ] }
@@ -135,7 +140,7 @@ Si tu peignais les tampons dans le design, la carte serait figée et le produit 
 Conditions :
 
 * mode parmi tampons et points ;
-* objectif entre 1 et 30 ;
+* objectif entre 1 et 30 en tampons, entre 50 et 1000 en points ;
 * aucun palier au-dessus de l'objectif ;
 * aucun doublon de position entre paliers ;
 * récompense non vide ;

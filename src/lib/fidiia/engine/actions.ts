@@ -6,7 +6,7 @@
 //      Le prompt le décourage ; ce fichier l'empêche.
 
 import type { Action, Cible } from "../validation/schemas.ts";
-import { CibleSchema } from "../validation/schemas.ts";
+import { bornesObjectif, CibleSchema } from "../validation/schemas.ts";
 import type { ConversationState } from "../state/conversationState.ts";
 import { majEtat } from "../state/conversationState.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
@@ -47,17 +47,25 @@ export function appliquerAction(
     }
 
     case "objectif": {
-      // Les paliers déjà posés au-delà du nouvel objectif deviendraient
-      // invalides : on les remet à l'échelle plutôt que de les perdre.
-      const paliers = (etat.paliers ?? []).filter((p) => p.position <= action.valeur);
       // Déduire avant de demander : parler d'un nombre de passages implique un
       // programme à tampons, mode par défaut documenté. Une demande explicite
       // de points l'emporte, et ne repasse jamais en tampons toute seule.
-      const e = majEtat(etat, {
-        objectif: action.valeur,
-        paliers,
-        systemeFidelite: etat.systemeFidelite ?? "stamps",
-      });
+      const modeResolu = etat.systemeFidelite ?? "stamps";
+      // Le schéma Zod accepte la réunion des deux bornes (1 à 1000) : il ne
+      // connaît pas le mode déjà choisi. La borne précise du mode, elle,
+      // dépend de l'état — donc vérifiée ici, pas dans schemas.ts.
+      const { min, max } = bornesObjectif(modeResolu);
+      if (action.valeur < min || action.valeur > max) {
+        return {
+          ok: false,
+          code: "INVALIDE",
+          motif: `objectif ${action.valeur} hors de l'intervalle ${min}-${max} pour le mode ${modeResolu}`,
+        };
+      }
+      // Les paliers déjà posés au-delà du nouvel objectif deviendraient
+      // invalides : on les remet à l'échelle plutôt que de les perdre.
+      const paliers = (etat.paliers ?? []).filter((p) => p.position <= action.valeur);
+      const e = majEtat(etat, { objectif: action.valeur, paliers, systemeFidelite: modeResolu });
       const m = noterDecision(memory, "objectif", action.valeur);
       return { ok: true, etat: e, memory: m, effet: `objectif à ${action.valeur}` };
     }

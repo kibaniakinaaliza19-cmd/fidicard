@@ -21,8 +21,10 @@ import {
   NB_PROPOSITIONS,
   NOM_MAX,
   NOMS_ACTIONS,
-  OBJECTIF_MAX,
-  OBJECTIF_MIN,
+  OBJECTIF_MAX_POINTS,
+  OBJECTIF_MAX_TAMPONS,
+  OBJECTIF_MIN_POINTS,
+  OBJECTIF_MIN_TAMPONS,
   PALIERS_MAX,
   PALIERS_MIN,
   REPLY_MAX,
@@ -37,8 +39,10 @@ import { chiffresNonDeclares, decrireDivergences, motsInterditsTrouves } from ".
  * aucune règle : il ne doit pas figurer dans un prompt.
  */
 const VALEURS_DECLAREES = [
-  OBJECTIF_MIN,
-  OBJECTIF_MAX,
+  OBJECTIF_MIN_TAMPONS,
+  OBJECTIF_MAX_TAMPONS,
+  OBJECTIF_MIN_POINTS,
+  OBJECTIF_MAX_POINTS,
   LIBELLE_COURT_MAX,
   PALIERS_MIN,
   PALIERS_MAX,
@@ -68,7 +72,7 @@ test("le contrôle repère un chiffre qui ne correspond à aucune borne", () => 
 });
 
 test("le contrôle laisse passer un texte dont tous les chiffres sont déclarés", () => {
-  const bon = `objectif entre ${OBJECTIF_MIN} et ${OBJECTIF_MAX}, libellé ${LIBELLE_COURT_MAX} caractères`;
+  const bon = `objectif entre ${OBJECTIF_MIN_TAMPONS} et ${OBJECTIF_MAX_TAMPONS}, libellé ${LIBELLE_COURT_MAX} caractères`;
   assert.deepEqual(chiffresNonDeclares(bon, VALEURS_DECLAREES), []);
 });
 
@@ -90,9 +94,12 @@ for (const [nom, texte] of BLOCS) {
 
 test("le contrat énonce réellement les bornes qu'il prétend faire respecter", () => {
   // Un contrat muet sur ses bornes est aussi mauvais qu'un contrat qui ment :
-  // le modèle n'a alors aucune valeur cible.
-  assert.match(CONTRACT, new RegExp(`\\b${OBJECTIF_MIN}\\b`));
-  assert.match(CONTRACT, new RegExp(`\\b${OBJECTIF_MAX}\\b`));
+  // le modèle n'a alors aucune valeur cible. Les deux modes ont chacun leur
+  // paire de bornes depuis que l'objectif n'a plus une borne unique.
+  assert.match(CONTRACT, new RegExp(`\\b${OBJECTIF_MIN_TAMPONS}\\b`));
+  assert.match(CONTRACT, new RegExp(`\\b${OBJECTIF_MAX_TAMPONS}\\b`));
+  assert.match(CONTRACT, new RegExp(`\\b${OBJECTIF_MIN_POINTS}\\b`));
+  assert.match(CONTRACT, new RegExp(`\\b${OBJECTIF_MAX_POINTS}\\b`));
   assert.match(CONTRACT, new RegExp(`\\b${LIBELLE_COURT_MAX}\\b`));
 });
 

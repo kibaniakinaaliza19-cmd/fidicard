@@ -15,7 +15,7 @@ import {
 } from "../corpus/index.ts";
 import { construireCarte } from "../index.ts";
 import { creerEtat } from "../state/conversationState.ts";
-import { CarteSchema, OBJECTIF_MAX, OBJECTIF_MIN } from "../validation/schemas.ts";
+import { bornesObjectif, CarteSchema } from "../validation/schemas.ts";
 
 /* ------------------------------------------------------------- secteurs */
 
@@ -161,20 +161,27 @@ test("le corpus respecte le mode : une carte à points n'a pas de grille", () =>
   assert.equal(CarteSchema.safeParse(c).success, true);
 });
 
-test("suggestionPour n'emprunte jamais un objectif hors des bornes du contrat", () => {
-  // Le corpus, lui, ignore la borne : en mode points il propose parfois des
-  // seuils de plusieurs centaines. Une suggestion hors borne construirait
-  // une carte que controlerCarte rejette silencieusement (§ contrôle
-  // qualité) — la carte ne sortait alors jamais, sans qu'aucun message ne
-  // le dise. Ce test verrouille le pont, pas le corpus lui-même.
+test("suggestionPour n'emprunte jamais un objectif hors des bornes DE SON MODE", () => {
+  // Le corpus ignore les bornes : en mode points il propose parfois des
+  // seuils de plusieurs centaines. Une seule borne pour les deux modes
+  // (l'ancienne version de ce test) aurait éliminé quasiment toutes les
+  // suggestions en points — un programme de points à 30 points n'existe
+  // pas. Chaque mode a désormais sa propre paire de bornes
+  // (schemas.ts:bornesObjectif) ; c'est elle que ce test verrouille, sur
+  // les 24 secteurs et les deux modes, pas le corpus lui-même.
+  let verifiees = 0;
   for (const secteur of secteursConnus()) {
     for (const mode of ["stamps", "points"] as const) {
       const s = suggestionPour(secteur, mode);
       if (!s) continue;
+      const { min, max } = bornesObjectif(mode);
       assert.ok(
-        s.objectif >= OBJECTIF_MIN && s.objectif <= OBJECTIF_MAX,
-        `${secteur}/${mode} : objectif ${s.objectif} hors des bornes du contrat`,
+        s.objectif >= min && s.objectif <= max,
+        `${secteur}/${mode} : objectif ${s.objectif} hors de l'intervalle ${min}-${max}`,
       );
+      verifiees += 1;
     }
   }
+  // Un test qui ne vérifie jamais rien passerait aussi silencieusement.
+  assert.ok(verifiees > 0, "aucune suggestion trouvée : le test ne vérifie rien");
 });

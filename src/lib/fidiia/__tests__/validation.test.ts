@@ -39,8 +39,11 @@ test("les sept actions valides sont acceptées", () => {
   }
 });
 
-test("un objectif hors bornes est rejeté avec un motif", () => {
-  const r = validerAction({ type: "objectif", valeur: 99 });
+test("un objectif hors du schéma (union des deux modes) est rejeté avec un motif", () => {
+  // 1500 dépasse même la borne large du mode points (1000) : invalide quel
+  // que soit le mode. Le schéma ne connaît pas le mode — voir
+  // appliquerAction pour le rejet PROPRE À un mode (ex. 99 en tampons).
+  const r = validerAction({ type: "objectif", valeur: 1500 });
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.motif, /valeur/);
 });

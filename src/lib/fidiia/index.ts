@@ -93,7 +93,9 @@ export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[
   // jamais : elle ne sert que si le commerçant n'a rien dit.
   const suggestion = suggestionPour(trouverSecteur(etat.secteur ?? ""), mode);
 
-  const objectif = etat.objectif ?? suggestion?.objectif ?? 10;
+  // Le défaut générique dépend du mode : 10 est un nombre de passages
+  // raisonnable, mais un programme de points ne descend pas sous 50.
+  const objectif = etat.objectif ?? suggestion?.objectif ?? (mode === "points" ? 100 : 10);
   const recompense =
     etat.recompense ??
     // On ne reprend la récompense du corpus que si l'objectif vient du corpus

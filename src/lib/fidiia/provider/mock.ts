@@ -74,10 +74,14 @@ function repondre(dernier: string, contexte: string): ChatResult {
   const n = normaliser(dernier);
 
   // --- déclencheurs de test : sorties volontairement invalides -------------
+  // 1500 dépasse même la borne large du mode points (1000, schemas.ts) :
+  // invalide au niveau du schéma, quel que soit le mode — c'est ce niveau
+  // que ces déclencheurs testent. Un objectif refusé pour SON mode (ex. 99
+  // en tampons) est une autre famille de rejet, testée dans engine.test.ts.
   if (n.includes("__invalide_objectif__")) {
     return {
       reply: "Voilà, j'ai réglé l'objectif.",
-      toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 99 } },
+      toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 1500 } },
     };
   }
   if (n.includes("__invalide_libelle__")) {
@@ -101,7 +105,7 @@ function repondre(dernier: string, contexte: string): ChatResult {
   if (n.includes("__invalide_puis_valide__")) {
     return {
       reply: "Objectif réglé.",
-      toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 44 } },
+      toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 1500 } },
     };
   }
 

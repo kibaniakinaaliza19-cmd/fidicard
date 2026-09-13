@@ -142,6 +142,39 @@ test("réduire l'objectif remet les paliers à l'échelle plutôt que de les per
   }
 });
 
+test("un objectif accepté par le schéma est refusé s'il dépasse la borne du mode tampons", () => {
+  // 99 passe le schéma Zod (union des deux modes, 1 à 1000) mais dépasse la
+  // borne réelle du mode tampons par défaut (1 à 30) — le rejet se fait ici,
+  // pas dans validation/schemas.ts, puisqu'il dépend de l'état.
+  const e = creerEtat({ secteur: "Garage" });
+  const r = appliquerAction({ type: "objectif", valeur: 99 }, e, creerMemoire());
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.motif, /99.*stamps/);
+});
+
+test("le même objectif est accepté une fois le mode points choisi", () => {
+  const e = creerEtat({ secteur: "Café", systemeFidelite: "points" });
+  const r = appliquerAction({ type: "objectif", valeur: 200 }, e, creerMemoire());
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.etat.objectif, 200);
+});
+
+test("50 est refusé en tampons mais accepté en points", () => {
+  const stamps = appliquerAction(
+    { type: "objectif", valeur: 50 },
+    creerEtat({ systemeFidelite: "stamps" }),
+    creerMemoire(),
+  );
+  assert.equal(stamps.ok, false);
+
+  const points = appliquerAction(
+    { type: "objectif", valeur: 50 },
+    creerEtat({ systemeFidelite: "points" }),
+    creerMemoire(),
+  );
+  assert.equal(points.ok, true);
+});
+
 test("des paliers au-delà de l'objectif sont refusés à l'application", () => {
   const e = creerEtat({ objectif: 10 });
   const r = appliquerAction(
