@@ -12,6 +12,7 @@ interface UIState {
   theme: Theme;
   rightTab: RightTab;
   templateGalleryOpen: boolean;
+  importCardOpen: boolean;
   walletPreviewOpen: boolean;
   publishModalOpen: boolean;
   aiAssistantOpen: boolean;
@@ -20,6 +21,7 @@ interface UIState {
   toggleTheme: () => void;
   setRightTab: (tab: RightTab) => void;
   setTemplateGalleryOpen: (open: boolean) => void;
+  setImportCardOpen: (open: boolean) => void;
   setWalletPreviewOpen: (open: boolean) => void;
   setPublishModalOpen: (open: boolean) => void;
   setAiAssistantOpen: (open: boolean) => void;
@@ -33,6 +35,7 @@ export const useUIStore = create<UIState>((set) => ({
   theme: "dark",
   rightTab: "proprietes",
   templateGalleryOpen: false,
+  importCardOpen: false,
   walletPreviewOpen: false,
   publishModalOpen: false,
   aiAssistantOpen: false,
@@ -42,6 +45,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleTheme: () => set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
   setRightTab: (tab) => set({ rightTab: tab }),
   setTemplateGalleryOpen: (open) => set({ templateGalleryOpen: open }),
+  setImportCardOpen: (open) => set({ importCardOpen: open }),
   setWalletPreviewOpen: (open) => set({ walletPreviewOpen: open }),
   setPublishModalOpen: (open) => set({ publishModalOpen: open }),
   setAiAssistantOpen: (open) => set({ aiAssistantOpen: open }),

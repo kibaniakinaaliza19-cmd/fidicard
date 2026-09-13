@@ -1,40 +1,133 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { Search, Sparkles } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
-import { mockClients } from "@/data/clients";
+import { mockClients, type Client } from "@/data/clients";
+import { localClientsSnapshot, localClientsServerSnapshot, subscribeLocalClients } from "@/lib/localClients";
+
+interface Row extends Client {
+  isNew?: boolean;
+}
 
 export default function ClientsPage() {
   const [query, setQuery] = useState("");
+  const local = useSyncExternalStore(subscribeLocalClients, localClientsSnapshot, localClientsServerSnapshot);
+
+  const signups: Row[] = useMemo(
+    () =>
+      local.map((c) => ({
+        id: c.id,
+        name: `${c.firstName} ${c.lastName}`.trim(),
+        email: c.email,
+        phone: c.phone,
+        stamps: 0,
+        points: 0,
+        joined: "Aujourd'hui",
+        lastVisit: "Inscription QR",
+        isNew: true,
+      })),
+    [local]
+  );
+
+  const allClients: Row[] = useMemo(() => [...signups, ...mockClients], [signups]);
 
   const filtered = useMemo(
-    () =>
-      mockClients.filter((c) =>
-        `${c.name} ${c.email}`.toLowerCase().includes(query.toLowerCase())
-      ),
-    [query]
+    () => allClients.filter((c) => `${c.name} ${c.email}`.toLowerCase().includes(query.toLowerCase())),
+    [allClients, query]
   );
 
   return (
     <div>
       <PageHeader title="Clients" subtitle="Suivez la fidélité de vos clients en un coup d'œil" />
-      <div className="px-8 pb-10">
-        <div className="mb-4 flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--border-strong)", background: "var(--panel)" }}>
-          <Search size={15} style={{ color: "var(--text-faint)" }} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher un client..."
-            className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-faint)]"
-            style={{ color: "var(--text)" }}
-          />
+      <div className="px-4 pb-10 sm:px-6 lg:px-8">
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className="champ flex flex-1 items-center gap-2"
+            style={{ height: 48, paddingLeft: "var(--space-3)", paddingRight: "var(--space-3)" }}
+          >
+            <Search size={15} style={{ color: "var(--text-faint)" }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un client..."
+              className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-faint)]"
+              style={{ color: "var(--text)" }}
+            />
+          </div>
+          <span
+            className="grid shrink-0 place-items-center px-4 text-sm"
+            style={{
+              height: 48,
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--text-dim)",
+            }}
+          >
+            <span className="font-semibold" style={{ color: "var(--text)" }}>{allClients.length}</span> clients
+          </span>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border" style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
+        {/* Liste sous md, tableau au-delà.
+         *
+         * Six colonnes dans 390 px : les quatre dernières — dont « Tampons »,
+         * le seul chiffre pour lequel on ouvre cette page au comptoir —
+         * tombaient hors du cadre, et `overflow-hidden` les rendait
+         * inatteignables, même en faisant glisser. Sur téléphone, chaque
+         * client devient donc une ligne qui porte son compteur. */}
+        <ul
+          className="divide-y overflow-hidden border md:hidden"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-1)",
+            borderRadius: "var(--radius-lg)",
+          }}
+        >
+          {filtered.map((c) => (
+            <li key={c.id} className="flex items-center gap-3 px-4 py-3.5">
+              <span
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+                style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
+              >
+                {c.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?"}
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium" style={{ color: "var(--text)" }}>
+                  {c.name || "Sans nom"}
+                </p>
+                <p className="truncate text-xs" style={{ color: "var(--text-faint)" }}>
+                  {c.isNew ? "Inscription QR · aujourd'hui" : `Dernière visite : ${c.lastVisit}`}
+                </p>
+              </div>
+
+              <span
+                className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums"
+                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+              >
+                {c.stamps} <span className="font-normal">{c.stamps > 1 ? "tampons" : "tampon"}</span>
+              </span>
+            </li>
+          ))}
+          {filtered.length === 0 && (
+            <li className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-faint)" }}>
+              Aucun client trouvé.
+            </li>
+          )}
+        </ul>
+
+        <div
+          className="hidden overflow-hidden border md:block"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--surface-1)",
+            borderRadius: "var(--radius-lg)",
+          }}
+        >
           <table className="w-full text-left text-sm">
             <thead>
-              <tr style={{ background: "var(--panel-soft)" }}>
+              <tr style={{ background: "var(--surface-2)" }}>
                 {["Client", "Téléphone", "Tampons", "Points", "Inscrit le", "Dernière visite"].map((h) => (
                   <th key={h} className="px-5 py-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
                     {h}
@@ -44,17 +137,27 @@ export default function ClientsPage() {
             </thead>
             <tbody>
               {filtered.map((c) => (
-                <tr key={c.id} className="border-t transition-colors hover:bg-[var(--panel-soft)]" style={{ borderColor: "var(--border)" }}>
+                <tr key={c.id} className="border-t transition-colors hover:bg-[var(--surface-4)]" style={{ borderColor: "var(--border)" }}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <span
                         className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white"
-                        style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))" }}
+                        style={{ background: "linear-gradient(135deg, var(--accent), var(--accent-deep))" }}
                       >
-                        {c.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                        {c.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?"}
                       </span>
                       <div>
-                        <p className="font-medium" style={{ color: "var(--text)" }}>{c.name}</p>
+                        <p className="flex items-center gap-2 font-medium" style={{ color: "var(--text)" }}>
+                          {c.name || "Sans nom"}
+                          {c.isNew && (
+                            <span
+                              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                              style={{ background: "var(--success-soft)", color: "var(--success)" }}
+                            >
+                              <Sparkles size={9} /> Nouveau · Carte active
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs" style={{ color: "var(--text-faint)" }}>{c.email}</p>
                       </div>
                     </div>

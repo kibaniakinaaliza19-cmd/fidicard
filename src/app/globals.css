@@ -1,33 +1,154 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+   JETONS DE DESIGN
+   ---------------------------------------------------------------------------
+   Source unique. Aucun composant ne doit écrire une couleur, un rayon, une
+   durée ou un z-index en dur : tout passe par un jeton. Un changement global
+   se fait ici, et nulle part ailleurs.
+   =========================================================================== */
+
 :root {
-  --bg: #080808;
-  --bg-elevated: #0e0e0e;
-  --panel: #111111;
-  --panel-soft: #141414;
+  color-scheme: dark;
+
+  /* ---------------------------------------------------------- profondeur */
+  /* Cinq niveaux, pas deux. Un thème sombre n'est pas « fond noir, texte
+     blanc » : ce sont des surfaces qui se distinguent les unes des autres. */
+  --surface-0: #050505; /* fond de l'application */
+  --surface-0-alt: #070707; /* variante, grands écrans */
+  --surface-1: #0b0b0c; /* cartes principales : Impact, graphique, activité */
+  --surface-2: #101011; /* cartes secondaires : tuiles KPI, récompenses */
+  --surface-3: #151516; /* ce qui passe au-dessus : menus, feuilles, toasts */
+  --surface-4: #1a1a1b; /* état interactif : survol */
+
   --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --text: #f5f5f4;
-  --text-dim: #9a9a97;
-  --text-faint: #6b6b68;
-  --accent-1: #ff6a3d;
-  --accent-2: #e0342c;
-  --accent-glow: rgba(240, 101, 62, 0.35);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.18);
+  /* Une grille de graphique doit être plus faible qu'une bordure de carte :
+     à 0,08 elle se lit comme une structure, à 0,04 elle disparaît dès qu'on
+     regarde la courbe — ce qui est exactement son rôle. */
+  --grid: rgba(255, 255, 255, 0.04);
+  --overlay: rgba(0, 0, 0, 0.65);
+
+  --text: #f7f7f7;
+  --text-dim: #a1a1a6;
+  --text-faint: #6f6f75;
+
+  /* ------------------------------------------------------------- accent */
+  --accent: #ff5a1f;
+  --accent-light: #ff6b2c;
+  --accent-deep: #e94716;
+  --accent-glow: rgba(255, 90, 31, 0.25); /* lueur des CTA et du scanner */
+  --accent-soft: rgba(255, 90, 31, 0.08); /* pastilles d'icône, badges */
+  --accent-shadow: rgba(255, 90, 31, 0.18); /* ombre portée du bouton plein */
+
+  /* Alias : le premier jet nommait ces deux-là autrement. */
+  --accent-tint: var(--accent-soft);
+  --accent-wash: var(--accent-soft);
+
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.12);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --warning: #f59e0b;
+  --info: #3b82f6;
+
+  /* ----------------------------------------------------------- géométrie */
+  /* Tailwind v4 lit ces variables comme sa propre échelle de rayons : définir
+     --radius-lg ici redéfinit `rounded-lg` dans toute l'application. C'est
+     précisément l'effet recherché — les 200 utilitaires de rayon déjà écrits
+     dans les composants se rangent d'un coup sur l'échelle du système. Il faut
+     donc les définir TOUS, sinon `rounded-2xl` garderait la valeur d'origine
+     de Tailwind (16 px) et créerait un barreau hors échelle. */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-3xl: 24px;
+  --radius-pill: 999px;
+
+  /* Échelle d'espacement. Toute marge sort d'ici. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ------------------------------------------------------------- ombres */
+  /* La profondeur vient d'abord du contraste et des bordures. Les ombres
+     restent basses et larges : une ombre qu'on remarque est une ombre ratée. */
+  --shadow-1: 0 10px 40px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 20px 60px rgba(0, 0, 0, 0.3);
+  --shadow-accent: 0 8px 30px var(--accent-shadow);
+  --shadow-scan: 0 8px 30px var(--accent-glow);
+
+  /* --------------------------------------------------------- mouvement */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 150ms;
+  --t-base: 200ms;
+  --t-slow: 300ms;
+
+  /* --------------------------------------------------------- empilement */
+  /* Une échelle nommée, pour ne plus revoir de z-index: 999999. */
+  --z-content: 1;
+  --z-sticky: 10;
+  --z-header: 20;
+  --z-dropdown: 30;
+  --z-nav: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-scanner: 70;
+
+  /* ------------------------------------------------- alias historiques */
+  /* L'application existante nomme encore les surfaces ainsi. Les alias
+     évitent une réécriture de 157 occurrences en une seule fois ; les
+     composants migrent vers les jetons ci-dessus au fur et à mesure. */
+  --bg: var(--surface-0);
+  --bg-elevated: var(--surface-1);
+  --panel: var(--surface-2);
+  --panel-soft: var(--surface-3);
+  --accent-1: var(--accent);
+  --accent-2: var(--accent-deep);
 }
 
 [data-theme="light"] {
-  --bg: #f5f4f2;
-  --bg-elevated: #ffffff;
-  --panel: #ffffff;
-  --panel-soft: #fafafa;
+  color-scheme: light;
+
+  --surface-0: #f5f4f2;
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #fafafa;
+  --surface-4: #f2f1ef;
+
   --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.14);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --border-hover: rgba(0, 0, 0, 0.18);
+
   --text: #171614;
   --text-dim: #635f5a;
   --text-faint: #948f89;
-  --accent-1: #ff6a3d;
-  --accent-2: #e0342c;
-  --accent-glow: rgba(240, 101, 62, 0.18);
+
+  --accent-glow: rgba(255, 90, 31, 0.18);
+  --accent-tint: rgba(255, 90, 31, 0.1);
+  --accent-wash: rgba(255, 90, 31, 0.06);
+
+  /* Les couleurs d'état du thème sombre sont conçues pour briller sur du
+     noir : le vert #22c55e tombe à 2,2:1 sur blanc. Elles s'assombrissent. */
+  --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.12);
+  --danger: #b91c1c;
+  --danger-soft: rgba(185, 28, 28, 0.1);
+  --warning: #b45309;
+  --info: #1d4ed8;
+
+  --shadow-1: 0 10px 40px rgba(0, 0, 0, 0.08);
+  --shadow-2: 0 20px 60px rgba(0, 0, 0, 0.1);
 }
 
 @theme inline {
@@ -43,12 +164,178 @@
 
 html,
 body {
-  background: var(--bg);
+  background: var(--surface-0);
   color: var(--text);
 }
 
 body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  /* Les chiffres de fidélité changent souvent en place. En chasse
+     proportionnelle, un compteur qui passe de 9 à 10 fait sauter la ligne. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Le corps du texte reste en chiffres proportionnels : la tabulaire est faite
+   pour les colonnes, pas pour les phrases. */
+p,
+label {
+  font-variant-numeric: normal;
+}
+
+/* Les chiffres de tête portent la hiérarchie : gros, gras, resserrés. */
+.kpi-number {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* -------------------------------------------------------------- boutons */
+/* Les états ne peuvent pas vivre dans un style inline : :hover, :active et
+   :disabled n'existent qu'en CSS. Deux classes, tous les états, une seule
+   définition — plutôt que la même paire de couleurs recopiée à dix endroits. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 52px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  /* Un libellé de bouton ne se coupe jamais. « Ajouter un tampon » passait sur
+     deux lignes dans une colonne de 131 px et la hauteur fixe le tronquait. */
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-accent);
+}
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-light);
+  }
+}
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-deep);
+}
+
+/* L'action principale prend une part et demie de la rangée sur téléphone,
+   où « Ajouter un tampon » ne tient pas dans la moitié de 390 px. Au-delà de
+   640 px elle reprend sa largeur naturelle : en style inline, le ratio battait
+   la classe `sm:flex-none` et le bouton s'étirait sur 970 px de large. */
+.cta-rangee {
+  flex: 1.5 1 0;
+}
+@media (min-width: 640px) {
+  .cta-rangee {
+    flex: 0 0 auto;
+  }
+}
+
+.btn-secondary {
+  background: var(--surface-1);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-weight: 500;
+}
+@media (hover: hover) {
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: var(--border-hover);
+  }
+}
+
+/* --------------------------------------------------------------- champs */
+.champ {
+  width: 100%;
+  height: 48px;
+  padding: 0 var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  outline: none;
+  transition:
+    border-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+.champ::placeholder {
+  color: var(--text-faint);
+}
+.champ:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.champ[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+/* --------------------------------------------------------------- focus */
+/* Un anneau unique pour toute l'application, visible au clavier seulement.
+   Sans lui, une navigation au clavier avance à l'aveugle. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* --------------------------------------------------------- chargement */
+/* Les squelettes reprennent exactement les dimensions du composant final :
+   un squelette d'une autre taille fait sauter la page à l'arrivée. */
+.skeleton {
+  background: var(--surface-3);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.04),
+    transparent
+  );
+  animation: skeleton-sweep 1.4s infinite;
+}
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ------------------------------------------------------------ mouvement */
+/* Certaines personnes ont un trouble vestibulaire ; le système le signale. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -134,4 +421,85 @@ body {
 }
 .float-slow {
   animation: float-slow 6s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------- ergonomie mobile */
+/* Ce bloc fait la différence entre « un site ouvert en plein écran » et
+   « une application ». Chaque règle corrige un détail qui trahit le web. */
+
+/* Le rebond élastique en fin de scroll est LE signe qui trahit un site
+   déguisé en application. On le coupe, sans toucher au scroll lui-même. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Une application ne se sélectionne pas au doigt comme un article. Les
+   champs de saisie et le contenu éditable gardent la sélection, eux. */
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"],
+  nav {
+    -webkit-user-select: none;
+    user-select: none;
+    /* Supprime le rectangle gris au tap sur Android. */
+    -webkit-tap-highlight-color: transparent;
+    /* Le double-tap ne zoome plus sur une cible actionnable : on visait un
+       bouton, pas un agrandissement. */
+    touch-action: manipulation;
+  }
+
+  /* Seuil tactile. 44 px est le minimum au-dessous duquel un doigt rate. */
+  button,
+  a[role="button"],
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 44px;
+  }
+}
+
+/* Sous l'encoche et au-dessus de la barre gestuelle. */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Une fois installée, l'application n'a plus de barre d'adresse : 100vh ment
+   sur iOS, 100dvh dit la vérité. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    height: 100dvh;
+  }
+}
+
+/* Un tableau reste un tableau sur un grand écran ; sous 400 px il devient
+   une pile de cartes, sinon il déborde ou devient illisible. */
+@media (max-width: 640px) {
+  .table-auto-stack thead {
+    display: none;
+  }
+  .table-auto-stack tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+  }
+  .table-auto-stack td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border: 0;
+  }
+  .table-auto-stack td::before {
+    content: attr(data-libelle);
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
 }

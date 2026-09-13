@@ -1,58 +1,64 @@
 "use client";
 
 import { useState } from "react";
-import { Gift, UserPlus, Stamp, Megaphone } from "lucide-react";
-import PageHeader from "@/components/ui/PageHeader";
-
-const initial = [
-  { id: 1, icon: Gift, text: "Sofia Rossi a échangé sa récompense « 1 café offert »", time: "Il y a 10 min", read: false },
-  { id: 2, icon: UserPlus, text: "Lucie Petit a rejoint votre carte de fidélité", time: "Il y a 1 h", read: false },
-  { id: 3, icon: Stamp, text: "Karim Benali a reçu un nouveau tampon", time: "Il y a 4 h", read: true },
-  { id: 4, icon: Megaphone, text: "Votre carte « Coffee House » a été publiée avec succès", time: "Hier", read: true },
-];
+import { Bell, LayoutGrid, Plus } from "lucide-react";
+import KpiRow from "@/components/notifications/KpiRow";
+import NotifQuotaBar from "@/components/notifications/NotifQuotaBar";
+import ImpactCard from "@/components/notifications/ImpactCard";
+import PreviewColumn from "@/components/notifications/PreviewColumn";
+import TabsSection from "@/components/notifications/TabsSection";
+import ScheduledCard from "@/components/notifications/ScheduledCard";
+import CreateNotificationDrawer from "@/components/notifications/CreateNotificationDrawer";
 
 export default function NotificationsPage() {
-  const [items, setItems] = useState(initial);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
     <div>
-      <PageHeader title="Notifications" subtitle="Restez informé de l'activité de vos clients" />
-      <div className="px-8 pb-10">
-        <div className="space-y-2">
-          {items.map((n) => {
-            const Icon = n.icon;
-            return (
-              <button
-                key={n.id}
-                onClick={() => setItems((prev) => prev.map((i) => (i.id === n.id ? { ...i, read: true } : i)))}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border px-5 py-4 text-left transition-colors hover:bg-[var(--panel-soft)]"
-                style={{
-                  borderColor: "var(--border)",
-                  background: n.read ? "var(--panel)" : "var(--panel-soft)",
-                }}
-              >
-                <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                  style={{ background: "var(--accent-glow)", color: "var(--accent-1)" }}
-                >
-                  <Icon size={16} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm" style={{ color: "var(--text)" }}>
-                    {n.text}
-                  </span>
-                  <span className="block text-xs" style={{ color: "var(--text-faint)" }}>
-                    {n.time}
-                  </span>
-                </span>
-                {!n.read && (
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: "var(--accent-1)" }} />
-                )}
-              </button>
-            );
-          })}
+      <header className="flex flex-wrap items-start justify-between gap-3 px-8 pb-6 pt-8">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight" style={{ color: "var(--text)" }}>
+            <Bell size={22} className="text-[var(--accent-1)]" /> Notifications
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-dim)" }}>
+            Gérez, personnalisez et programmez vos notifications
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="flex cursor-pointer items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
+            style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+          >
+            <LayoutGrid size={15} /> Importer un modèle
+          </button>
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="flex cursor-pointer items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-[1.02]"
+            style={{ background: "linear-gradient(135deg, var(--accent-1), var(--accent-2))", boxShadow: "0 10px 24px -8px var(--accent-glow)" }}
+          >
+            <Plus size={15} /> Créer une notification
+          </button>
+        </div>
+      </header>
+
+      <div className="space-y-5 px-8 pb-10">
+        <NotifQuotaBar />
+        <KpiRow />
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_360px]">
+          <div className="space-y-5">
+            <ImpactCard />
+            <TabsSection />
+          </div>
+          <div className="space-y-5">
+            <PreviewColumn />
+            <ScheduledCard onOpenDrawer={() => setDrawerOpen(true)} />
+          </div>
         </div>
       </div>
+
+      <CreateNotificationDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );
 }
