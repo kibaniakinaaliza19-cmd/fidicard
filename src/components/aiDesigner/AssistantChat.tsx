@@ -259,7 +259,17 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       });
       const data = await r.json();
       if (!r.ok) {
-        add({ role: "assistant", text: data.error || "Je n'ai pas pu répondre — réessayez." });
+        // Le motif technique ("Requête invalide.", "Clé OpenAI invalide
+        // côté serveur."…) va dans la console du développeur, jamais dans
+        // la conversation : ça ne dit rien d'actionnable au commerçant.
+        if (data?.error) console.warn("[FidiIA]", data.error);
+        add({
+          role: "assistant",
+          text:
+            r.status === 429
+              ? "Trop de demandes en ce moment — réessayez dans quelques instants."
+              : "Je n'ai pas pu répondre à l'instant. Reformulez, ou réessayez dans quelques secondes.",
+        });
         return;
       }
       fidiiaSession.current = data.session ?? null;

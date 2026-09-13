@@ -89,33 +89,63 @@ interface PostBody {
   session?: SessionBlob;
 }
 
+const MAX_HISTORIQUE = 60;
+const MAX_CARACTERES = 4000;
+
+/** Coerce en texte exploitable, ou chaîne vide. Jamais d'exception. */
+function normaliserTexte(v: unknown): string {
+  if (typeof v === "string") return v.trim().slice(0, MAX_CARACTERES);
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "";
+}
+
+/**
+ * Répare l'historique plutôt que de l'examiner : un rôle inconnu devient
+ * « user » — c'est le commerçant qui parle par défaut —, un contenu non
+ * textuel ou vide est écarté, un contenu trop long est tronqué, et seuls les
+ * derniers messages sont gardés. Une conversation trop longue perd sa tête,
+ * elle n'est jamais refusée.
+ */
+function normaliserHistorique(brut: unknown): { role: "user" | "assistant"; content: string }[] {
+  if (!Array.isArray(brut)) return [];
+  const propre: { role: "user" | "assistant"; content: string }[] = [];
+  for (const e of brut) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const content = normaliserTexte(o.content);
+    if (!content) continue;
+    propre.push({ role: o.role === "assistant" ? "assistant" : "user", content });
+  }
+  return propre.slice(-MAX_HISTORIQUE);
+}
+
+function normaliserSession(brut: unknown): SessionBlob | undefined {
+  if (!brut || typeof brut !== "object") return undefined;
+  const o = brut as Record<string, unknown>;
+  return {
+    etat: o.etat && typeof o.etat === "object" ? (o.etat as EtatBrut) : undefined,
+    memory: o.memory && typeof o.memory === "object" ? (o.memory as SessionBlob["memory"]) : undefined,
+    historique: normaliserHistorique(o.historique),
+    tours: typeof o.tours === "number" ? o.tours : undefined,
+    carteProposee: typeof o.carteProposee === "boolean" ? o.carteProposee : undefined,
+    carte: o.carte && typeof o.carte === "object" ? (o.carte as Carte) : undefined,
+  };
+}
+
 type ValidationCorps = { ok: true; valeur: PostBody } | { ok: false; motif: string };
 
-// Un seul message « Requête invalide. » côté client masquait laquelle des
-// conditions avait échoué — indiagnosticable depuis le navigateur. Le motif
-// précis part maintenant dans le journal serveur (jamais dans la réponse :
-// on ne débogue pas le client avec la forme exacte du contrat serveur).
+/**
+ * Répare le corps reçu plutôt que de le rejeter : un rôle inconnu, un
+ * contenu vide, un historique trop long se corrigent, ils ne bloquent rien.
+ * Un seul refus reste possible — il n'y a littéralement rien à dire — et il
+ * ne dépend d'aucune forme précise du corps, seulement de son contenu utile.
+ * Le motif part dans le journal serveur, jamais dans la réponse.
+ */
 function validerCorps(brut: unknown): ValidationCorps {
-  if (!brut || typeof brut !== "object") return { ok: false, motif: "corps absent ou non objet" };
-  const o = brut as Record<string, unknown>;
-  if (typeof o.message !== "string") return { ok: false, motif: "message absent ou non chaîne (ancien format « messages[] » ?)" };
-  if (!o.message.trim()) return { ok: false, motif: "message vide" };
-  if (o.message.length > 4000) return { ok: false, motif: `message trop long (${o.message.length} car.)` };
-  const session = o.session;
-  if (session !== undefined && (typeof session !== "object" || session === null)) {
-    return { ok: false, motif: "session présente mais non objet" };
-  }
-  const s = session as SessionBlob | undefined;
-  if (s?.historique !== undefined) {
-    if (!Array.isArray(s.historique)) return { ok: false, motif: "session.historique non tableau" };
-    if (s.historique.length > 60) return { ok: false, motif: `session.historique trop long (${s.historique.length} messages)` };
-    for (const [i, m] of s.historique.entries()) {
-      if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || m.content.length > 4000) {
-        return { ok: false, motif: `session.historique[${i}] invalide` };
-      }
-    }
-  }
-  return { ok: true, valeur: { message: o.message, session: s } };
+  const o = brut && typeof brut === "object" ? (brut as Record<string, unknown>) : {};
+  const message = normaliserTexte(o.message);
+  if (!message) return { ok: false, motif: "aucun texte exploitable dans le message" };
+  return { ok: true, valeur: { message, session: normaliserSession(o.session) } };
 }
 
 /** Extrait le code HTTP OpenAI embarqué dans le message d'erreur du provider. */
@@ -125,15 +155,14 @@ function statutDepuisErreur(err: unknown): number | null {
 }
 
 export async function POST(req: Request) {
-  let validation: ValidationCorps;
-  try {
-    validation = validerCorps(await req.json());
-  } catch (err) {
-    validation = { ok: false, motif: `JSON illisible : ${err instanceof Error ? err.message : "erreur"}` };
-  }
+  // Un corps illisible n'est pas une panne, c'est un corps vide : la seule
+  // conséquence est qu'il n'y aura rien à en tirer, traité plus bas comme
+  // n'importe quel corps sans texte exploitable.
+  const brut = await req.json().catch(() => null);
+  const validation = validerCorps(brut);
   if (!validation.ok) {
     console.log(JSON.stringify({ scope: "assistant.validation", event: "rejet", motif: validation.motif, at: new Date().toISOString() }));
-    return Response.json({ error: "Requête invalide." }, { status: 400 });
+    return Response.json({ error: "Aucun message reçu — retapez votre phrase." }, { status: 400 });
   }
   const corps = validation.valeur;
 
