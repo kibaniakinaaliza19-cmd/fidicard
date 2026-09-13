@@ -13,7 +13,7 @@
 // donnée du commerçant — elle sert de point de départ, jamais de vérité.
 
 import { familySpecs, generatedSpecs } from "../../../data/templateFactory.ts";
-import type { ModeFidelite } from "../validation/schemas.ts";
+import { OBJECTIF_MAX, OBJECTIF_MIN, type ModeFidelite } from "../validation/schemas.ts";
 
 /** Un modèle du corpus, réduit à ce dont FidiIA a besoin. */
 export interface ReferenceCorpus {
@@ -211,7 +211,16 @@ export function suggestionPour(
   mode: ModeFidelite,
 ): SuggestionCorpus | undefined {
   if (!secteur) return undefined;
-  const refs = CORPUS.filter((r) => r.secteur === secteur && r.mode === mode);
+  // Le corpus ignore la borne produit : en mode points, 272 de ses 864
+  // entrées annoncent un seuil de plusieurs centaines (« 400 pts »), alors
+  // que schemas.ts plafonne tout objectif à OBJECTIF_MAX quel que soit le
+  // mode. Une suggestion hors borne construirait une carte que
+  // controlerCarte rejette — et jusqu'ici ce rejet n'était jamais montré,
+  // ni à l'écran ni dans un journal : la carte ne sortait simplement
+  // jamais. On ne retient donc que les références utilisables.
+  const refs = CORPUS.filter(
+    (r) => r.secteur === secteur && r.mode === mode && r.objectif >= OBJECTIF_MIN && r.objectif <= OBJECTIF_MAX,
+  );
   if (refs.length === 0) return undefined;
 
   const objectif = objectifDominant(refs);
@@ -243,7 +252,11 @@ export function referencesDistinctes(
   combien = 3,
 ): ReferenceCorpus[] {
   if (!secteur) return [];
-  const refs = CORPUS.filter((r) => r.secteur === secteur && r.mode === mode);
+  // Même filtre que suggestionPour : ne jamais inspirer le modèle avec un
+  // objectif que le contrat lui interdit d'émettre.
+  const refs = CORPUS.filter(
+    (r) => r.secteur === secteur && r.mode === mode && r.objectif >= OBJECTIF_MIN && r.objectif <= OBJECTIF_MAX,
+  );
   const out: ReferenceCorpus[] = [];
   const dispositionsVues = new Set<string>();
   for (const r of refs) {

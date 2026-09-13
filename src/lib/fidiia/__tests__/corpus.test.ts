@@ -15,7 +15,7 @@ import {
 } from "../corpus/index.ts";
 import { construireCarte } from "../index.ts";
 import { creerEtat } from "../state/conversationState.ts";
-import { CarteSchema } from "../validation/schemas.ts";
+import { CarteSchema, OBJECTIF_MAX, OBJECTIF_MIN } from "../validation/schemas.ts";
 
 /* ------------------------------------------------------------- secteurs */
 
@@ -158,5 +158,23 @@ test("le corpus respecte le mode : une carte à points n'a pas de grille", () =>
   );
   assert.equal(c.programme.mode, "points");
   assert.deepEqual(c.zonesFidelite, [], "aucune grille de tampons en mode points");
-  assert.ok(c.programme.objectif > 50, "un objectif en points, pas en passages");
+  assert.equal(CarteSchema.safeParse(c).success, true);
+});
+
+test("suggestionPour n'emprunte jamais un objectif hors des bornes du contrat", () => {
+  // Le corpus, lui, ignore la borne : en mode points il propose parfois des
+  // seuils de plusieurs centaines. Une suggestion hors borne construirait
+  // une carte que controlerCarte rejette silencieusement (§ contrôle
+  // qualité) — la carte ne sortait alors jamais, sans qu'aucun message ne
+  // le dise. Ce test verrouille le pont, pas le corpus lui-même.
+  for (const secteur of secteursConnus()) {
+    for (const mode of ["stamps", "points"] as const) {
+      const s = suggestionPour(secteur, mode);
+      if (!s) continue;
+      assert.ok(
+        s.objectif >= OBJECTIF_MIN && s.objectif <= OBJECTIF_MAX,
+        `${secteur}/${mode} : objectif ${s.objectif} hors des bornes du contrat`,
+      );
+    }
+  }
 });

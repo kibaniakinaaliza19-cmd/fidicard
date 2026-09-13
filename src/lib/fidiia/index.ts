@@ -201,6 +201,13 @@ async function obtenirActionValidee(session: Session): Promise<SortieModele> {
 
 /* --------------------------------------------------------------- traitement */
 
+// Trace minimale de chaque étape qui peut faire disparaître une carte sans
+// que rien ne le dise. Jamais le texte de la conversation, jamais la clé —
+// seulement l'événement et son motif quand il y en a un.
+function journaliser(event: string, details: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ scope: "fidiia.envoyerMessage", event, at: new Date().toISOString(), ...details }));
+}
+
 export async function envoyerMessage(session: Session, texte: string): Promise<Reponse> {
   session.tours += 1;
   session.historique.push({ role: "user", content: texte });
@@ -268,6 +275,7 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
       sortie.reply ||
       (decision.step === "QUESTION" && decision.champ ? formulerQuestion(decision.champ) : "");
     if (repli) refus = { code: "INVALIDE", motif: rejet ?? "sortie invalide" };
+    journaliser("action_recue", { step: decision.step, appels, action: action?.type ?? null, repli, rejet });
   }
 
   // 3. Application de l'action, si elle a survécu à la validation.
@@ -277,8 +285,10 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
       session.etat = r.etat;
       session.memory = r.memory;
       if (action.type === "proposer") session.carteProposee = true;
+      journaliser("action_appliquee", { type: action.type, effet: r.effet });
     } else {
       refus = { code: r.code, motif: r.motif };
+      journaliser("action_refusee", { type: action.type, code: r.code, motif: r.motif });
       action = null;
       if (r.code === "VERROU") {
         reply = `${r.motif} Dites-moi si vous voulez que je le déverrouille.`;
@@ -290,11 +300,28 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
   let verdicts: Verdict[] = [];
   if (decision.step === "CREATION" || repli) {
     const cibles = decision.step === "MODIFICATION" ? detecterModificationCiblee(texte) : [];
-    const carte = construireCarte(session.etat, cibles);
+    let carte = construireCarte(session.etat, cibles);
     verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
+
+    // Un échec ici ne doit JAMAIS rester muet : construireCarte est
+    // déterministe, donc rejouer avec le même état produirait le même
+    // échec. Le seul repli sûr est de reconstruire sans secteur — la
+    // configuration générique, prouvée valide par construction — plutôt
+    // que de laisser le commerçant devant une carte qui n'arrive jamais.
+    if (!toutValide(verdicts)) {
+      journaliser("carte_rejetee", { motifs: motifsEchec(verdicts) });
+      carte = construireCarte({ ...session.etat, secteur: undefined }, cibles);
+      verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
+      journaliser("carte_repli_generique", { valide: toutValide(verdicts) });
+    }
+
     if (toutValide(verdicts)) {
       session.carte = carte;
       session.carteProposee = true;
+      journaliser("carte_construite", {
+        mode: carte.programme.mode,
+        objectif: carte.programme.objectif,
+      });
       // La confirmation vient du produit, pas du modèle : elle décrit ce qui a
       // réellement été construit, donc elle ne peut pas mentir.
       if (!repli) {
@@ -302,6 +329,13 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
           carte.programme.mode === "points" ? "points" : "passages"
         }, ${carte.programme.recompense.texte.toLowerCase()}. Dites-moi ce que vous voulez ajuster.`;
       }
+    } else {
+      // Même le repli générique a échoué : ça n'arrive dans aucun test
+      // connu, mais si ça arrive un jour, le commerçant doit le savoir au
+      // lieu d'attendre une carte qui ne vient jamais.
+      journaliser("carte_repli_echec", { motifs: motifsEchec(verdicts) });
+      refus = { code: "INVALIDE", motif: motifsEchec(verdicts).join(" ; ") };
+      reply = "Je n'arrive pas à finaliser la carte pour l'instant. Dites-moi votre secteur autrement, ou réessayez.";
     }
   } else if (decision.step === "MODIFICATION" && session.carte) {
     const carte: Carte = { ...session.carte, ciblesModifiees: detecterModificationCiblee(texte) };
