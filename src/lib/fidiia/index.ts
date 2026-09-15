@@ -126,6 +126,10 @@ export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[
       { id: "code", nom: "Code-barres", type: "codebarres" as const },
     ],
     zonesFidelite: enTampons ? ["zone-fidelite"] : [],
+    // Amorce de design issue du corpus (accent + icône du secteur) — voir
+    // schemas.ts:DesignSchema. `undefined` en dehors du corpus : pas de
+    // secteur reconnu, pas d'accent inventé.
+    design: suggestion ? { accent: suggestion.accent, icone: suggestion.icone } : undefined,
     programme: {
       mode,
       objectif,

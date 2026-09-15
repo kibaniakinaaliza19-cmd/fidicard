@@ -172,12 +172,26 @@ export type Programme = z.infer<typeof ProgrammeSchema>;
  * l'application : le moteur décrit, l'adaptateur convertit. Cette séparation
  * garde `lib/fidiia` testable sans rien charger de l'interface.
  */
+/**
+ * Amorce de design, alimentée aujourd'hui par le corpus (une couleur
+ * d'accent et une icône par secteur), jamais par le modèle : le contrat de
+ * sortie ne lui demande encore aucune valeur visuelle. Champ optionnel et
+ * séparé du reste exprès, pour que le jour où le contrat s'étend, il n'y ait
+ * qu'un émetteur de plus à brancher ici — pas de nouveau champ à inventer.
+ */
+export const DesignSchema = z.object({
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  icone: z.string().min(1).max(NOM_MAX).optional(),
+});
+export type Design = z.infer<typeof DesignSchema>;
+
 export const CarteSchema = z.object({
   nomCommerce: z.string().min(1).max(NOM_MAX),
   calques: z.array(CalqueSchema),
   /** Identifiants des zones de fidélité. Il doit y en avoir exactement une. */
   zonesFidelite: z.array(z.string().min(1)),
   programme: ProgrammeSchema,
+  design: DesignSchema.optional(),
   /** Cibles réellement touchées par cette génération. Sert au test de verrou. */
   ciblesModifiees: z.array(CibleSchema).default([]),
 });

@@ -135,6 +135,25 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
   };
   layers.push(codeBarres);
 
+  // Une zone de tampons UNIQUEMENT en mode tampons. En mode points, la
+  // progression est un compteur : poser une grille ici mélangerait les deux
+  // systèmes sur la même carte.
+  const zones =
+    carte.programme.mode === "stamps"
+      ? [createDefaultStampGridZone(id("zone"), carte.programme.objectif)]
+      : [];
+
+  // Accent du corpus : sans lui, le fond neutre par défaut ne varie jamais,
+  // quel que soit le secteur (c'était tout le défaut). Avec lui, seuls les
+  // tampons et le liseré du dégradé en portent la trace — le fond reste sombre
+  // et lisible, il ne devient pas la couleur d'accent elle-même.
+  const accent = carte.design?.accent;
+  if (accent && zones[0]) {
+    zones[0].icon = carte.design?.icone;
+    zones[0].iconColor = accent;
+    zones[0].styleOverride = { filled: accent, border: accent };
+  }
+
   const doc: CardDoc = {
     id: id("carte"),
     name: carte.nomCommerce,
@@ -142,7 +161,7 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     background: {
       kind: "gradient",
       color: "#1a1a1a",
-      gradientFrom: "#2a1a12",
+      gradientFrom: accent ? assombrir(accent, 0.14) : "#2a1a12",
       gradientTo: "#120d0a",
       gradientAngle: 135,
       pattern: "dots",
@@ -154,13 +173,7 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     published: false,
     updatedAt: Date.now(),
     version: 2,
-    // Une zone de tampons UNIQUEMENT en mode tampons. En mode points, la
-    // progression est un compteur : poser une grille ici mélangerait les deux
-    // systèmes sur la même carte.
-    zones:
-      carte.programme.mode === "stamps"
-        ? [createDefaultStampGridZone(id("zone"), carte.programme.objectif)]
-        : [],
+    zones,
   };
 
   const config: Partial<LoyaltyConfig> = {
@@ -175,6 +188,14 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
   };
 
   return { doc, config };
+}
+
+/** Ramène une couleur d'accent vive à une teinte de fond sombre et lisible. */
+function assombrir(hex: string, facteur: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return "#2a1a12";
+  const [r, g, b] = [m[1], m[2], m[3]].map((c) => Math.round(parseInt(c, 16) * facteur));
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function regleLisible(carte: Carte): string {

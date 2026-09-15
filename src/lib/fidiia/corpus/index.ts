@@ -170,6 +170,10 @@ export interface SuggestionCorpus {
   mode: ModeFidelite;
   objectif: number;
   recompense: { texte: string; libelleCourt: string };
+  /** Issus de la même référence que `recompense` : pas de palette qui vient
+   *  d'un modèle et un objectif qui vient d'un autre. */
+  accent: string;
+  icone: string;
   references: ReferenceCorpus[];
 }
 
@@ -236,6 +240,8 @@ export function suggestionPour(
       texte: accordee.recompense,
       libelleCourt: libelleCourt(accordee.recompense),
     },
+    accent: accordee.accent,
+    icone: accordee.icone,
     references: refs.slice(0, 3),
   };
 }
