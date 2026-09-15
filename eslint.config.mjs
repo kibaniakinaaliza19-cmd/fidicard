@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Moteur OCR distribué tel quel (bundles minifiés tiers) : on ne lint pas
+    // du code qu'on ne maintient pas.
+    "public/ocr/**",
   ]),
 ]);
 

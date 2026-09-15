@@ -21,12 +21,12 @@ function ToastItem({ id, message }: { id: number; message: string }) {
       exit={{ opacity: 0, y: -8, scale: 0.95 }}
       className="flex items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-2xl backdrop-blur-xl"
       style={{
-        background: "var(--panel-soft)",
+        background: "var(--surface-3)",
         borderColor: "var(--border-strong)",
         color: "var(--text)",
       }}
     >
-      <CheckCircle2 size={16} className="text-[var(--accent-1)]" />
+      <CheckCircle2 size={16} style={{ color: "var(--success)" }} />
       {message}
     </motion.div>
   );
