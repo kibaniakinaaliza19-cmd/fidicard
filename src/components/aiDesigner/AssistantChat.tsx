@@ -9,7 +9,6 @@ import { useLoyaltyStore } from "@/store/loyaltyStore";
 import { useUIStore } from "@/store/uiStore";
 import { inferTierType } from "@/lib/loyalty";
 import {
-  detectSector,
   detectMode,
   proposalsFor,
   TONES,
@@ -17,6 +16,8 @@ import {
 } from "@/lib/aiDesigner/conversation";
 import { buildFromSpec, type TemplateEntry, type TemplateSpec } from "@/data/templateCatalog";
 import { iconRegistry } from "@/lib/icons";
+import { createImageLayer } from "@/lib/layerFactory";
+import { lireVisuel, VisuelRefuse, type SorteVisuel } from "@/lib/visuelCommerce";
 
 type Chip = { label: string; kind: "sector" | "tone"; value: string };
 interface Msg {
@@ -25,6 +26,8 @@ interface Msg {
   text?: string;
   chips?: Chip[];
   proposals?: TemplateEntry[];
+  /** vignette d'un logo ou d'une photo jointe par le commerçant */
+  visuel?: string;
 }
 
 let mid = 0;
@@ -42,11 +45,6 @@ function shortReward(reward: string): string {
   return reward.split(/\s+/)[0].slice(0, 8);
 }
 
-const SECTOR_CHIPS = [
-  "Café", "Boulangerie", "Restaurant", "Salon de coiffure",
-  "Institut de beauté", "Bar", "Fleuriste", "Garage",
-];
-
 // Suggestions rapides sous la conversation. Déclarées hors du composant : les
 // actions sont décrites en données, jamais en fermetures créées au rendu.
 /* Les quatre demandes qui reviennent, proposées tant que la conversation est
@@ -60,10 +58,13 @@ const DEMANDES = [
   { titre: "Comprendre mes résultats", detail: "Ce que disent vos chiffres", envoi: "Pourquoi mes récompenses sont-elles moins utilisées ?" },
 ] as const;
 
+/* Aucun jargon ici non plus. « Café à tampons » imposait le vocabulaire
+   interne dans le seul endroit que le commerçant regarde en permanence, juste
+   au-dessus du champ de saisie. */
 const QUICK: { label: string; send?: string; open?: "import" }[] = [
   { label: "Importer une carte", open: "import" },
-  { label: "Café à tampons", send: "Je tiens un café, je veux une carte à tampons" },
-  { label: "Salon premium", send: "Salon de coiffure haut de gamme" },
+  { label: "J'ai un café", send: "Je tiens un café de quartier" },
+  { label: "J'ai un salon", send: "Je tiens un salon de coiffure" },
 ];
 
 export default function AssistantChat({ onStep }: { onStep: (n: number) => void }) {
@@ -77,7 +78,8 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       id: nextId(),
       role: "assistant",
       text:
-        "Bonjour ! Je suis FidiIA. Décrivez-moi votre activité, et je créerai pour vous une carte de fidélité professionnelle et unique.",
+        "Bonjour, je suis FidiIA. Racontez-moi votre commerce, et je vous dessine " +
+        "une carte de fidélité qui vous ressemble.",
     },
   ]);
   const [phase, setPhase] = useState<"activity" | "tone" | "proposals" | "done">("activity");
@@ -93,6 +95,9 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [busy, setBusy] = useState(false);
   const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fichierRef = useRef<HTMLInputElement>(null);
+  const addLayer = useCardStore((s) => s.addLayer);
+  const setBackground = useCardStore((s) => s.setBackground);
 
   useEffect(() => {
     // Pas de défilement tant que la conversation n'a pas commencé : sinon
@@ -136,22 +141,6 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     });
     setPhase("tone");
     onStep(1);
-  }
-
-  function handleActivity(text: string) {
-    const sec = detectSector(text);
-    const m = detectMode(text);
-    if (m) setMode(m);
-    if (sec) {
-      setSector(sec);
-      askTone(sec);
-    } else {
-      add({
-        role: "assistant",
-        text: "Dites-m'en un peu plus — quel est votre métier ? Vous pouvez aussi choisir ci-dessous.",
-        chips: SECTOR_CHIPS.map((s) => ({ label: s, kind: "sector", value: s })),
-      });
-    }
   }
 
   function generate(sec: string, toneId: string, intro: string) {
@@ -403,31 +392,22 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       runAi(text);
       return;
     }
-    if (phase === "activity") handleActivity(text);
-    else if (phase === "tone") {
-      const t = TONES.find((x) => text.toLowerCase().includes(x.label.split(" ")[0].toLowerCase()));
-      if (t) chooseTone(t);
-      else add({ role: "assistant", text: "Choisissez une ambiance parmi les propositions au-dessus 🙂" });
-    } else if (phase === "proposals") {
-      add({ role: "assistant", text: "Cliquez sur l'une des trois cartes proposées pour l'appliquer." });
-    } else {
-      // done : petites intentions d'édition reconnues
-      handleEdit(text);
-    }
-  }
 
-  function handleEdit(text: string) {
-    const t = text.toLowerCase();
-    const num = t.match(/\b(\d{1,2})\b/);
-    if (/tampon|case/.test(t) && num) {
-      const n = Math.max(1, Math.min(24, Number(num[1])));
-      useLoyaltyStore.getState().setTotalStamps(n);
-      add({ role: "assistant", text: `C'est fait : ${n} tampons. La grille s'est reconstruite automatiquement.` });
-      return;
-    }
+    /* Sans modèle, on le dit. On ne joue pas la comédie.
+     *
+     * Un scénario écrit d'avance prenait le relais ici : il posait des
+     * questions toutes faites, imposait son vocabulaire et sortait une carte
+     * du catalogue — pendant que l'en-tête affichait « En ligne ». Le
+     * commerçant croyait parler à FidiIA et jugeait FidiIA sur un script.
+     *
+     * Une panne annoncée vaut mieux qu'une conversation qui fait illusion :
+     * elle se répare, l'autre se subit. */
     add({
       role: "assistant",
-      text: "Pour un réglage précis, utilisez les onglets Tampons / Récompenses à droite, ou ouvrez l'éditeur avancé via « Personnalisation ».",
+      text:
+        "Je ne suis pas connectée pour l'instant, et je préfère vous le dire plutôt " +
+        "que de vous répondre au hasard. Vérifiez que la clé OPENAI_API_KEY est bien " +
+        "renseignée dans le fichier .env.local, puis relancez le serveur — je reprends aussitôt.",
     });
   }
 
@@ -439,6 +419,61 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     } else {
       const t = TONES.find((x) => x.id === c.value);
       if (t) chooseTone(t);
+    }
+  }
+
+  /**
+   * Un visuel joint par le commerçant.
+   *
+   * La sorte n'est pas demandée dans une boîte de dialogue : une image plus
+   * large que haute et de grande taille est une photo d'enseigne, un carré
+   * compact est un logo. Se tromper n'est pas grave — il le dit, et FidiIA
+   * corrige. Poser une question de plus l'aurait été davantage.
+   *
+   * L'image se pose immédiatement sur la carte : le geste doit avoir un effet
+   * visible, pas attendre le prochain tour du modèle. Le modèle, lui, est
+   * prévenu par une ligne de conversation — l'image elle-même ne quitte jamais
+   * le navigateur.
+   */
+  async function joindreVisuel(fichier: File) {
+    const sorte: SorteVisuel = fichier.size > 400 * 1024 ? "photo" : "logo";
+    try {
+      const visuel = await lireVisuel(fichier, sorte);
+
+      if (visuel.sorte === "photo") {
+        setBackground({ kind: "image", image: visuel.dataUrl, imageDim: 45 });
+      } else {
+        const doc = useCardStore.getState().card;
+        addLayer(
+          // En haut à droite, pas à gauche : le nom du commerce et sa promesse
+          // sont alignés à gauche dans toutes les dispositions, et un logo posé
+          // là recouvrait le nom — « MON ENTREPRISE » s'affichait « TREPRISE ».
+          createImageLayer(doc.layers.length + 1, visuel.dataUrl, {
+            name: "Logo",
+            x: 76,
+            y: 7,
+            width: 17,
+            height: 24,
+          }),
+        );
+      }
+
+      add({ role: "user", text: visuel.nom, visuel: visuel.dataUrl });
+      pushToast(visuel.sorte === "photo" ? "Photo placée en fond." : "Logo ajouté à la carte.");
+
+      const annonce =
+        visuel.sorte === "photo"
+          ? "[Le commerçant vient de joindre une photo de son commerce. Elle est déjà placée en fond de sa carte. Remercie-le en une phrase, dis-lui qu'il peut la remplacer quand il veut, et poursuis l'entretien là où il en était.]"
+          : "[Le commerçant vient de joindre son logo. Il est déjà posé en haut à gauche de sa carte. Remercie-le en une phrase, et poursuis l'entretien là où il en était.]";
+      if (aiLive) runAi(annonce);
+    } catch (e) {
+      add({
+        role: "assistant",
+        text:
+          e instanceof VisuelRefuse
+            ? e.message
+            : "Je n'ai pas réussi à lire cette image. Réessayez avec un autre fichier.",
+      });
     }
   }
 
@@ -478,12 +513,30 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
             {busy ? "Réfléchit…" : "Votre assistant intelligent"}
           </p>
         </div>
+        {/* La pastille dit la vérité.
+            « En ligne » était écrit en dur, vert en toutes circonstances. Sans
+            modèle branché, la conversation basculait sur un scénario écrit
+            d'avance tout en continuant d'afficher le même voyant : impossible
+            pour le commerçant de savoir à quoi il parlait. */}
         <span
           className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
-          style={{ border: "1px solid var(--border-strong)", color: "var(--text-dim)" }}
+          style={{
+            border: "1px solid var(--border-strong)",
+            color: aiLive === false ? "var(--danger)" : "var(--text-dim)",
+          }}
         >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--success)" }} />
-          En ligne
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{
+              background:
+                aiLive === null
+                  ? "var(--text-faint)"
+                  : aiLive
+                    ? "var(--success)"
+                    : "var(--danger)",
+            }}
+          />
+          {aiLive === null ? "Connexion…" : aiLive ? "En ligne" : "Hors ligne"}
         </span>
       </div>
 
@@ -541,6 +594,21 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         {(messages.length <= 1 ? [] : messages).map((m) => (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
             <div className="max-w-[85%]">
+              {/* Ce qu'il a joint, visible dans le fil. Un nom de fichier seul
+                  ne dit pas si c'est la bonne image qui est partie. */}
+              {m.visuel && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={m.visuel}
+                  alt="Visuel joint"
+                  className="mb-1.5 ml-auto block max-h-40 w-auto object-contain"
+                  style={{
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--surface-2)",
+                  }}
+                />
+              )}
               {m.text && (
                 <div
                   className="rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed"
@@ -649,7 +717,27 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       </div>
 
       <div className="flex items-center gap-2 px-3 py-3">
-        <button onClick={() => setImportCardOpen(true)} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Joindre / importer">
+        {/* Le trombone ouvrait l'import d'une carte existante. FidiIA demandait
+            un logo et une photo, et il n'existait aucun endroit pour les
+            donner : elle promettait ce que l'application ne savait pas faire. */}
+        <input
+          ref={fichierRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            // Le champ est remis à zéro pour que rejoindre deux fois le même
+            // fichier déclenche bien deux fois l'événement.
+            e.target.value = "";
+            if (f) joindreVisuel(f);
+          }}
+        />
+        <button
+          onClick={() => fichierRef.current?.click()}
+          className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]"
+          title="Joindre votre logo ou une photo"
+        >
           <Paperclip size={18} />
         </button>
         <input
