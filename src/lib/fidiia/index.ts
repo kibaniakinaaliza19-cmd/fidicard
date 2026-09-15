@@ -298,10 +298,23 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
     }
   }
 
+  // 3bis. `decide()` a jugé sur l'état d'AVANT ce tour : si l'action qu'on
+  // vient d'appliquer vient de réunir la dernière information manquante,
+  // `creationAutorisee` bascule à `true` maintenant, pas au tour prochain.
+  // Sans ce rattrapage, la carte n'apparaît qu'au message suivant — et si le
+  // commerçant n'en envoie pas d'autre qui déclenche une action, elle
+  // n'apparaît jamais. On ne re-décide que QUESTION → CREATION : les autres
+  // étapes (MODIFICATION, VALIDATION, ANALYSE) restent celles calculées par
+  // `decide()`, elles ne dépendent pas de `creationAutorisee`.
+  const decisionEffective: Decision =
+    decision.step === "QUESTION" && session.etat.creationAutorisee && session.carte === undefined
+      ? { step: "CREATION", motif: "les informations minimales ont été réunies pendant ce tour" }
+      : decision;
+
   // 4. Carte et contrôle qualité.
   let verdicts: Verdict[] = [];
-  if (decision.step === "CREATION" || repli) {
-    const cibles = decision.step === "MODIFICATION" ? detecterModificationCiblee(texte) : [];
+  if (decisionEffective.step === "CREATION" || repli) {
+    const cibles = decisionEffective.step === "MODIFICATION" ? detecterModificationCiblee(texte) : [];
     let carte = construireCarte(session.etat, cibles);
     verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
 
@@ -339,7 +352,7 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
       refus = { code: "INVALIDE", motif: motifsEchec(verdicts).join(" ; ") };
       reply = "Je n'arrive pas à finaliser la carte pour l'instant. Dites-moi votre secteur autrement, ou réessayez.";
     }
-  } else if (decision.step === "MODIFICATION" && session.carte) {
+  } else if (decisionEffective.step === "MODIFICATION" && session.carte) {
     const carte: Carte = { ...session.carte, ciblesModifiees: detecterModificationCiblee(texte) };
     verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
     if (toutValide(verdicts)) session.carte = carte;
@@ -355,7 +368,7 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
   session.historique.push({ role: "assistant", content: reply });
   session.journal.push({
     tour: session.tours,
-    step: decision.step,
+    step: decisionEffective.step,
     appels,
     action: action ? action.type : null,
     rejet,
@@ -363,7 +376,7 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
     versionPrompt: PROMPT_VERSION,
   });
 
-  return { reply, decision, action, refus, verrousPoses: poses, verdicts, appels, repli };
+  return { reply, decision: decisionEffective, action, refus, verrousPoses: poses, verdicts, appels, repli };
 }
 
 export { creerEtat, majEtat } from "./state/conversationState.ts";
