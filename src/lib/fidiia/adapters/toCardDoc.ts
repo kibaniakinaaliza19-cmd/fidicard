@@ -7,16 +7,32 @@
 //
 // Il s'appuie sur le chantier 2 : la grille de fidélité sort en ZONE
 // déclarative (`zones`), jamais en calques « Tampon 1 », « Tampon 2 »…
+//
+// Chantier composition : cet adaptateur ne DÉCIDE plus de la disposition —
+// calques, positions, polices, traitement du fond. Il TRADUIT la composition
+// transmise par le modèle (action `composer`, validation/schemas.ts). Les
+// valeurs codées en dur ci-dessous (`depuisGabarit`) ne servent plus que de
+// repli, quand `carte.composition` est absente — modèle en échec après deux
+// essais, ou tour n'ayant jamais transmis de composition.
 
 // Note d'exécution : ce fichier est le SEUL de `lib/fidiia` à importer le
 // reste de l'application. Il utilise donc l'alias `@/`, comme tout le code de
 // l'app — ce qui le rend non exécutable par `node --test`. C'est voulu : les
 // tests de FidiIA ne doivent charger ni l'éditeur ni le moteur de rendu.
 
-import type { BarcodeLayer, CardDoc, ImageLayer, Layer, TextLayer } from "@/types/layer";
+import type {
+  BarcodeLayer,
+  CardBackground,
+  CardDoc,
+  ImageLayer,
+  Layer,
+  StampGridZone,
+  TextLayer,
+  Zone,
+} from "@/types/layer";
 import { createDefaultStampGridZone } from "@/lib/loyalty/renderLayer";
 import type { LoyaltyConfig } from "@/lib/loyalty";
-import type { Carte } from "../validation/schemas.ts";
+import type { CalqueCompose, Carte, Composition } from "../validation/schemas.ts";
 
 let compteur = 0;
 function id(prefixe: string): string {
@@ -34,6 +50,261 @@ const socle = (nom: string, z: number) => ({
   hidden: false,
   groupId: null,
 });
+
+/**
+ * Convertit une carte FidiIA en CardDoc.
+ *
+ * Invariant : exactement une zone de fidélité, aucun calque nommé comme un
+ * tampon. Les contrôles de validation/quality.ts vérifient déjà ces deux
+ * points en amont ; l'adaptateur ne peut donc pas les casser sans qu'un test
+ * le voie.
+ */
+export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
+  return carte.composition ? depuisComposition(carte, carte.composition) : depuisGabarit(carte);
+}
+
+function configDepuisCarte(carte: Carte): Partial<LoyaltyConfig> {
+  return {
+    mode: carte.programme.mode,
+    totalStamps: carte.programme.objectif,
+    paliers: carte.programme.paliers.map((p) => ({
+      position: p.position,
+      label: p.label,
+      description: p.description,
+      type: "autre" as const,
+    })),
+  };
+}
+
+function codeBarresDepuisCarte(carte: Carte, z: number): BarcodeLayer {
+  return {
+    ...socle("Code-barres", z),
+    type: "barcode",
+    x: 14,
+    y: 80,
+    width: 72,
+    height: 14,
+    value: carte.nomCommerce.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12) || "FIDICARD",
+    lineColor: "#141414",
+    background: "#ffffff",
+  };
+}
+
+function regleLisible(carte: Carte): string {
+  const { mode, objectif, recompense } = carte.programme;
+  return mode === "points"
+    ? `${objectif} points = ${recompense.texte}`
+    : `${objectif} passages = ${recompense.texte}`;
+}
+
+/* --------------------------------------------------- traduction : composé */
+//
+// Deux commerces différents composés par le modèle ne doivent jamais donner
+// le même CardDoc — c'est tout le sens du chantier. Cette fonction ne fait
+// aucun choix esthétique : elle place ce que le modèle a décidé.
+
+const GRAISSE_VERS_POIDS: Record<string, number> = {
+  normal: 400,
+  medium: 500,
+  bold: 700,
+  extrabold: 800,
+};
+
+const ALIGNEMENT_VERS_ALIGN: Record<string, TextLayer["align"]> = {
+  gauche: "left",
+  centre: "center",
+  droite: "right",
+};
+
+const LIBELLE_ROLE: Record<CalqueCompose["role"], string> = {
+  nom: "Nom du commerce",
+  logo: "Logo",
+  slogan: "Slogan",
+  recompense: "Règle du programme",
+  mention: "Mention légale",
+  code: "Instruction de scan",
+};
+
+// Appelée uniquement pour les rôles textuels (voir depuisComposition) : le
+// schéma garantit alors police/graisse/taille/couleur/alignement (superRefine,
+// schemas.ts:CalqueComposeSchema). Les replis ci-dessous ne servent qu'à
+// satisfaire le type — ils ne devraient jamais s'activer en pratique.
+function calqueTexteDepuisComposition(c: CalqueCompose, z: number, contenu: string): TextLayer {
+  return {
+    ...socle(LIBELLE_ROLE[c.role], z),
+    type: "text",
+    x: c.x,
+    y: c.y,
+    width: c.largeur,
+    height: c.hauteur,
+    content: contenu,
+    font: c.police ?? "geist",
+    fontSize: c.taille ?? 6,
+    fontWeight: GRAISSE_VERS_POIDS[c.graisse ?? "normal"] ?? 400,
+    italic: false,
+    underline: false,
+    color: c.couleur ?? "#ffffff",
+    align: ALIGNEMENT_VERS_ALIGN[c.alignement ?? "gauche"] ?? "left",
+    letterSpacing: 0,
+    lineHeight: 1.2,
+  };
+}
+
+const MOTIF_VERS_PATTERN: Record<string, CardBackground["pattern"]> = {
+  points: "dots",
+  lignes: "diagonal",
+  grille: "grid",
+  vagues: "waves",
+};
+
+function fondDepuisComposition(fond: Composition["fond"]): CardBackground {
+  if (fond.type === "uni") {
+    return {
+      kind: "color",
+      color: fond.couleur,
+      gradientFrom: fond.couleur,
+      gradientTo: fond.couleur,
+      gradientAngle: 135,
+      pattern: "dots",
+      patternColor: fond.couleur,
+      image: null,
+      imageDim: 0,
+    };
+  }
+  if (fond.type === "degrade") {
+    return {
+      kind: "gradient",
+      color: fond.de,
+      gradientFrom: fond.de,
+      gradientTo: fond.vers,
+      gradientAngle: fond.angle,
+      pattern: "dots",
+      patternColor: fond.vers,
+      image: null,
+      imageDim: 0,
+    };
+  }
+  // motif — `intensite` n'a pas d'équivalent dans CardBackground (l'opacité du
+  // motif y est fixe, voir lib/backgroundStyle.ts) : traduite au mieux, pas
+  // perdue silencieusement, mais pas paramétrable finement ici.
+  return {
+    kind: "pattern",
+    color: fond.base,
+    gradientFrom: fond.base,
+    gradientTo: fond.base,
+    gradientAngle: 135,
+    pattern: MOTIF_VERS_PATTERN[fond.motif] ?? "dots",
+    patternColor: fond.accent,
+    image: null,
+    imageDim: 0,
+  };
+}
+
+/**
+ * La grille de tampons épouse exactement son cadre (voir
+ * lib/loyalty/renderLayer.ts:stampPosition) : donner `frame` et `perRow`
+ * suffit, la taille d'un tampon n'a besoin d'être qu'une fraction cohérente
+ * de la largeur disponible, jamais une valeur qui déborderait.
+ */
+function zoneDepuisComposition(zc: Composition["zoneFidelite"]): StampGridZone {
+  const size = Math.max(2, Math.min(30, (zc.largeur / zc.colonnes) * 0.7));
+  return {
+    id: id("zone"),
+    kind: "stampGrid",
+    frame: { x: zc.x, y: zc.y, w: zc.largeur, h: zc.hauteur },
+    size,
+    shape: zc.forme,
+    perRow: zc.colonnes,
+    showTierLabels: true,
+    icon: zc.icone,
+    styleOverride: { filled: zc.couleurRempli, empty: zc.couleurVide },
+  };
+}
+
+function depuisComposition(carte: Carte, composition: Composition): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
+  const aLogo = carte.calques.some((c) => c.type === "image" && /logo/i.test(c.nom));
+  const aPhoto = carte.calques.some((c) => c.type === "image" && /photo/i.test(c.nom));
+
+  const layers: Layer[] = [];
+  let z = 0;
+
+  // La photo de l'établissement n'a pas de rôle dans le contrat de
+  // composition (§1 du schéma) : sa position reste fixe, comme le
+  // code-barres — ce sont des éléments de produit, pas de design.
+  if (aPhoto) {
+    const photo: ImageLayer = {
+      ...socle("Photo de l'établissement", z++),
+      type: "image",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 42,
+      src: "",
+      brightness: 100,
+      contrast: 100,
+      saturate: 100,
+      radius: 0,
+    };
+    layers.push(photo);
+  }
+
+  for (const calque of composition.calques) {
+    z += 1;
+    if (calque.role === "logo") {
+      // Composé même sans logo réel (le modèle ne sait pas toujours qu'aucun
+      // fichier n'a été reçu) : sans image à placer, le calque est ignoré.
+      if (!aLogo) continue;
+      const logo: ImageLayer = {
+        ...socle("Logo", z),
+        type: "image",
+        x: calque.x,
+        y: calque.y,
+        width: calque.largeur,
+        height: calque.hauteur,
+        src: "",
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        radius: 0,
+      };
+      layers.push(logo);
+      continue;
+    }
+    // Nom et récompense ont un repli déterministe (les données existent déjà
+    // ailleurs sur la carte) ; slogan, mention et code sont de pures
+    // additions du modèle — vides, ils n'ont rien à afficher.
+    const repli =
+      calque.role === "nom" ? carte.nomCommerce : calque.role === "recompense" ? regleLisible(carte) : "";
+    const contenu = calque.texte || repli;
+    if (!contenu) continue;
+    layers.push(calqueTexteDepuisComposition(calque, z, contenu));
+  }
+
+  layers.push(codeBarresDepuisCarte(carte, 100));
+
+  const zones: Zone[] = carte.programme.mode === "stamps" ? [zoneDepuisComposition(composition.zoneFidelite)] : [];
+
+  const doc: CardDoc = {
+    id: id("carte"),
+    name: carte.nomCommerce,
+    category: "fidiia",
+    background: fondDepuisComposition(composition.fond),
+    layers,
+    published: false,
+    updatedAt: Date.now(),
+    version: 2,
+    zones,
+  };
+
+  return { doc, config: configDepuisCarte(carte) };
+}
+
+/* ---------------------------------------------------- repli : le gabarit */
+//
+// Utilisé uniquement quand `carte.composition` est absente (le modèle n'a
+// transmis aucune composition valide ce tour, ou aucun tour). Comportement
+// inchangé par rapport à avant ce chantier — c'est le filet de sécurité, pas
+// le chemin normal.
 
 function texte(nom: string, contenu: string, z: number, o: Partial<TextLayer> = {}): TextLayer {
   return {
@@ -57,15 +328,7 @@ function texte(nom: string, contenu: string, z: number, o: Partial<TextLayer> = 
   };
 }
 
-/**
- * Convertit une carte FidiIA en CardDoc.
- *
- * Invariant : exactement une zone de fidélité, aucun calque nommé comme un
- * tampon. Les contrôles de validation/quality.ts vérifient déjà ces deux
- * points en amont ; l'adaptateur ne peut donc pas les casser sans qu'un test
- * le voie.
- */
-export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
+function depuisGabarit(carte: Carte): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
   // Le design vient du modèle (action `design`) quand il l'a transmis, sinon
   // du corpus, sinon des valeurs par défaut — `construireCarte` (fidiia/index.ts)
   // a déjà tranché : à ce stade, `carte.design` porte toujours une palette
@@ -136,18 +399,7 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     layers.push(logo);
   }
 
-  const codeBarres: BarcodeLayer = {
-    ...socle("Code-barres", 5),
-    type: "barcode",
-    x: 14,
-    y: 80,
-    width: 72,
-    height: 14,
-    value: carte.nomCommerce.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12) || "FIDICARD",
-    lineColor: "#141414",
-    background: "#ffffff",
-  };
-  layers.push(codeBarres);
+  layers.push(codeBarresDepuisCarte(carte, 5));
 
   // Une zone de tampons UNIQUEMENT en mode tampons. En mode points, la
   // progression est un compteur : poser une grille ici mélangerait les deux
@@ -187,18 +439,7 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     zones,
   };
 
-  const config: Partial<LoyaltyConfig> = {
-    mode: carte.programme.mode,
-    totalStamps: carte.programme.objectif,
-    paliers: carte.programme.paliers.map((p) => ({
-      position: p.position,
-      label: p.label,
-      description: p.description,
-      type: "autre" as const,
-    })),
-  };
-
-  return { doc, config };
+  return { doc, config: configDepuisCarte(carte) };
 }
 
 /** Ramène une couleur vive à une teinte plus sombre — sert à creuser le
@@ -225,11 +466,4 @@ function melanger(hexA: string, hexB: string, versB: number): string {
     return Math.round(ca + (cb - ca) * versB);
   });
   return `#${canaux.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function regleLisible(carte: Carte): string {
-  const { mode, objectif, recompense } = carte.programme;
-  return mode === "points"
-    ? `${objectif} points = ${recompense.texte}`
-    : `${objectif} passages = ${recompense.texte}`;
 }

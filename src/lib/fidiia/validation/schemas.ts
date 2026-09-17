@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { STAMP_CATALOG_DATA } from "../../../data/stampCatalog.generated.ts";
+import { fontOptions } from "../../fonts.ts";
 
 /* ------------------------------------------------------------- primitives */
 
@@ -25,6 +26,15 @@ const ICONES_CATALOGUE = new Set(STAMP_CATALOG_DATA.map((i) => i.lucide));
 export function iconeConnue(valeur: string): boolean {
   return ICONES_CATALOGUE.has(valeur);
 }
+
+/**
+ * Les polices que l'app charge RÉELLEMENT (voir src/lib/fonts.ts, chargées
+ * dans app/layout.tsx via next/font). Le modèle ne doit jamais pouvoir en
+ * nommer une absente : elle ne s'afficherait pas, silencieusement remplacée
+ * par la police système du navigateur.
+ */
+export const POLICES_DISPONIBLES = fontOptions.map((f) => f.value) as [string, ...string[]];
+export const PoliceSchema = z.enum(POLICES_DISPONIBLES);
 
 export const ModeFideliteSchema = z.enum(["stamps", "points"]);
 export type ModeFidelite = z.infer<typeof ModeFideliteSchema>;
@@ -79,6 +89,29 @@ export const TEXTE_MAX = 120;
 export const REPLY_MAX = 2000;
 /** Longueur maximale d'un nom de secteur ou de calque. */
 export const NOM_MAX = 60;
+/** Position ou dimension d'un calque composé, en % du canvas de la carte. */
+export const PCT_MIN = 0;
+export const PCT_MAX = 100;
+export const PctSchema = z.number().min(PCT_MIN).max(PCT_MAX);
+/** Bornes du chantier composition — voir CompositionSchema plus bas. Toute
+ *  valeur chiffrée que le contrat annonce sur `composer` vient d'ici, comme
+ *  pour les autres actions (voir __tests__/prompts.test.ts). */
+export const CALQUES_COMPOSES_MIN = 1;
+export const CALQUES_COMPOSES_MAX = 12;
+export const ANGLE_DEGRE_MAX = 360;
+export const TAILLE_CALQUE_MIN = 1;
+export const TAILLE_CALQUE_MAX = 20;
+export const ZONE_COLONNES_MIN = 1;
+export const ZONE_COLONNES_MAX = 10;
+/** Au-delà, deux calques de texte se recouvrent trop pour rester lisibles
+ *  l'un et l'autre — voir validation/quality.ts:chevauchementExcessif. */
+export const CHEVAUCHEMENT_MAX_PCT = 30;
+/** Une seule action par tour a longtemps bloqué la composition : elle arrive
+ *  toujours après le dernier champ requis (contrat une-action-par-tour), donc
+ *  jamais à temps pour la première construction de la carte. `action` accepte
+ *  maintenant aussi un tableau — borné, pour ne pas transformer un tour de
+ *  conversation en salve d'actions incontrôlée. */
+export const MAX_ACTIONS_PAR_TOUR = 4;
 
 export const PalierSchema = z.object({
   // Plafond large (le max des deux modes) : la borne précise selon le mode
@@ -119,7 +152,104 @@ export const DesignSchema = z.object({
 });
 export type Design = z.infer<typeof DesignSchema>;
 
-/* ---------------------------------------------------------- les 8 actions */
+/* ------------------------------------------------------------ composition */
+//
+// Avant ce schéma, le modèle ne transmettait que des couleurs et une icône :
+// `toCardDoc.ts` décidait seul des calques, des positions, des polices et du
+// traitement du fond, et produisait la même structure pour toutes les
+// cartes. Ici, c'est le modèle qui compose ; le code ne fait plus que
+// valider, corriger ce qui se corrige, et refuser ce qui ne se corrige pas.
+
+/** Rôles de calque fermés : un rôle hors de cette liste est une composition
+ *  refusée, pas une composition partiellement acceptée. */
+export const RoleCalqueSchema = z.enum(["nom", "logo", "slogan", "recompense", "mention", "code"]);
+export type RoleCalque = z.infer<typeof RoleCalqueSchema>;
+
+export const GraisseSchema = z.enum(["normal", "medium", "bold", "extrabold"]);
+export const AlignementSchema = z.enum(["gauche", "centre", "droite"]);
+/** Mêmes valeurs que StampShape (types/layer.ts) — redéfinies ici plutôt
+ *  qu'importées : lib/fidiia ne dépend jamais du reste de l'app. */
+export const FormeZoneSchema = z.enum(["cercle", "arrondi", "carre"]);
+
+export const FondSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("uni"), couleur: CouleurHexSchema }),
+  z.object({
+    type: z.literal("degrade"),
+    de: CouleurHexSchema,
+    vers: CouleurHexSchema,
+    angle: z.number().min(0).max(ANGLE_DEGRE_MAX),
+  }),
+  z.object({
+    type: z.literal("motif"),
+    base: CouleurHexSchema,
+    accent: CouleurHexSchema,
+    motif: z.enum(["points", "lignes", "grille", "vagues"]),
+    intensite: z.number().min(0).max(1),
+  }),
+]);
+export type Fond = z.infer<typeof FondSchema>;
+
+/**
+ * `police`/`graisse`/`taille`/`couleur`/`alignement` sont optionnels dans le
+ * schéma de base, mais exigés par le `superRefine` ci-dessous sur tout rôle
+ * autre que `logo` — une image n'a ni police ni couleur de texte, les rendre
+ * obligatoires pour elle aussi n'a fait que produire un rejet à chaque fois
+ * que le modèle omettait, à raison, ces champs sur son calque logo (observé
+ * en réel : `calques.N.police : expected ... received undefined`).
+ */
+export const CalqueComposeSchema = z
+  .object({
+    role: RoleCalqueSchema,
+    texte: z.string().max(TEXTE_MAX).optional(),
+    x: PctSchema,
+    y: PctSchema,
+    largeur: PctSchema,
+    hauteur: PctSchema,
+    police: PoliceSchema.optional(),
+    graisse: GraisseSchema.optional(),
+    taille: z.number().min(TAILLE_CALQUE_MIN).max(TAILLE_CALQUE_MAX).optional(),
+    couleur: CouleurHexSchema.optional(),
+    alignement: AlignementSchema.optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.role === "logo") return;
+    for (const champ of ["police", "graisse", "taille", "couleur", "alignement"] as const) {
+      if (val[champ] === undefined) {
+        ctx.addIssue({ code: "custom", path: [champ], message: `requis pour un calque de rôle « ${val.role} »` });
+      }
+    }
+  });
+export type CalqueCompose = z.infer<typeof CalqueComposeSchema>;
+
+export const ZoneComposeSchema = z.object({
+  x: PctSchema,
+  y: PctSchema,
+  largeur: PctSchema,
+  hauteur: PctSchema,
+  forme: FormeZoneSchema,
+  colonnes: z.number().int().min(ZONE_COLONNES_MIN).max(ZONE_COLONNES_MAX),
+  icone: z.string().min(1).max(NOM_MAX).refine(iconeConnue, {
+    message: "icône absente du catalogue (777 icônes disponibles, voir stampCatalog)",
+  }),
+  couleurRempli: CouleurHexSchema,
+  couleurVide: CouleurHexSchema,
+});
+export type ZoneCompose = z.infer<typeof ZoneComposeSchema>;
+
+/**
+ * Deux commerces différents ne doivent jamais recevoir la même composition :
+ * c'est tout l'objet de ce schéma. `calques` est volontairement large (1 à
+ * 12) — un slogan ou une mention légale sont optionnels, mais nom et zone de
+ * fidélité structurent forcément la carte.
+ */
+export const CompositionSchema = z.object({
+  fond: FondSchema,
+  calques: z.array(CalqueComposeSchema).min(CALQUES_COMPOSES_MIN).max(CALQUES_COMPOSES_MAX),
+  zoneFidelite: ZoneComposeSchema,
+});
+export type Composition = z.infer<typeof CompositionSchema>;
+
+/* ---------------------------------------------------------- les 9 actions */
 
 export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
@@ -159,6 +289,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
     cible: CibleSchema,
     valeur: z.string().max(TEXTE_MAX).optional(),
   }),
+  z.object({
+    type: z.literal("composer"),
+    ...CompositionSchema.shape,
+  }),
 ]);
 export type Action = z.infer<typeof ActionSchema>;
 
@@ -172,13 +306,22 @@ export const NOMS_ACTIONS = [
   "paliers",
   "recompense",
   "modifier",
+  "composer",
 ] as const;
 
 /* -------------------------------------------------------- sortie complète */
 
+/** `action` accepte un objet unique ou un tableau (borné) : voir la note sur
+ *  MAX_ACTIONS_PAR_TOUR — c'est ce qui permet à `composer` d'arriver dans le
+ *  même tour que l'action qui complète les informations minimales. */
+export const ActionOuActionsSchema = z.union([
+  ActionSchema,
+  z.array(ActionSchema).min(1).max(MAX_ACTIONS_PAR_TOUR),
+]);
+
 export const SortieAssistantSchema = z.object({
   reply: z.string().min(1).max(REPLY_MAX),
-  action: ActionSchema.nullable(),
+  action: ActionOuActionsSchema.nullable(),
 });
 export type SortieAssistant = z.infer<typeof SortieAssistantSchema>;
 
@@ -223,6 +366,9 @@ export const CarteSchema = z.object({
   zonesFidelite: z.array(z.string().min(1)),
   programme: ProgrammeSchema,
   design: DesignSchema.optional(),
+  /** Composition transmise par le modèle (action `composer`). Absente : les
+   *  valeurs codées en dur de toCardDoc.ts servent de repli — voir ce fichier. */
+  composition: CompositionSchema.optional(),
   /** Cibles réellement touchées par cette génération. Sert au test de verrou. */
   ciblesModifiees: z.array(CibleSchema).default([]),
 });
@@ -246,6 +392,29 @@ export function validerAction(brut: unknown): Validation<Action> {
   const r = ActionSchema.safeParse(brut);
   if (r.success) return { ok: true, valeur: r.data };
   return { ok: false, motif: resumerErreur(r.error) };
+}
+
+/**
+ * Valide un lot d'actions brutes une par une, dans l'ordre : la première qui
+ * échoue invalide le lot entier — pas d'application partielle d'un tour
+ * encore mal formé, voir fidiia/index.ts. Un lot trop long est refusé avant
+ * même d'examiner son contenu, avec un motif que le modèle peut corriger à
+ * la relance.
+ */
+export function validerLotActions(bruts: unknown[]): Validation<Action[]> {
+  if (bruts.length > MAX_ACTIONS_PAR_TOUR) {
+    return {
+      ok: false,
+      motif: `trop d'actions en un seul tour : ${bruts.length}, ${MAX_ACTIONS_PAR_TOUR} au maximum`,
+    };
+  }
+  const valeurs: Action[] = [];
+  for (const brut of bruts) {
+    const r = validerAction(brut);
+    if (!r.ok) return { ok: false, motif: r.motif };
+    valeurs.push(r.valeur);
+  }
+  return { ok: true, valeur: valeurs };
 }
 
 export function validerCarte(brut: unknown): Validation<Carte> {

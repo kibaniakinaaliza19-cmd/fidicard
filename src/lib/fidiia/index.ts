@@ -22,7 +22,7 @@ import {
   detecterModificationCiblee,
 } from "./engine/actions.ts";
 import type { Action, Carte, Cible, Design } from "./validation/schemas.ts";
-import { validerAction } from "./validation/schemas.ts";
+import { validerLotActions } from "./validation/schemas.ts";
 import { controlerCarte, motifsEchec, toutValide, type Verdict } from "./validation/quality.ts";
 import { suggestionPour, trouverSecteur } from "./corpus/index.ts";
 
@@ -54,7 +54,10 @@ export interface EntreeJournal {
   tour: number;
   step: NextStep;
   appels: number;
-  action: string | null;
+  /** Types des actions transmises ce tour, dans l'ordre — vide si aucune.
+   *  Plusieurs sont possibles depuis que `composer` doit pouvoir arriver au
+   *  même tour que l'action qui complète les informations minimales. */
+  actions: string[];
   rejet?: string;
   repli?: boolean;
   versionPrompt: string;
@@ -63,7 +66,7 @@ export interface EntreeJournal {
 export interface Reponse {
   reply: string;
   decision: Decision;
-  action: Action | null;
+  actions: Action[];
   /** Renseigné quand une action a été refusée (verrou, sortie invalide). */
   refus?: { code: string; motif: string };
   verrousPoses: Cible[];
@@ -145,6 +148,10 @@ export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[
       (suggestion
         ? { accent: suggestion.accent, fond: DESIGN_PAR_DEFAUT.fond, texte: DESIGN_PAR_DEFAUT.texte, icone: suggestion.icone, ambiance: etat.ambiance ?? DESIGN_PAR_DEFAUT.ambiance }
         : { ...DESIGN_PAR_DEFAUT, ambiance: etat.ambiance ?? DESIGN_PAR_DEFAUT.ambiance }),
+    // Composition transmise par le modèle (action `composer`). Absente :
+    // toCardDoc.ts applique son repli codé en dur — ce fichier ne synthétise
+    // aucune composition de secours, ça n'a jamais été demandé au corpus.
+    composition: etat.composition,
     programme: {
       mode,
       objectif,
@@ -179,10 +186,17 @@ async function demanderAuModele(
 
 interface SortieModele {
   reply: string;
-  action: Action | null;
+  actions: Action[];
   appels: number;
   rejet?: string;
   repli: boolean;
+  /** Tokens de sortie de l'appel qui a produit ces actions, si le fournisseur
+   *  les communique — sert à mesurer le coût de `composer` (voir plus bas). */
+  tokensSortie?: number;
+}
+
+function bruts(resultat: ChatResult): unknown[] {
+  return resultat.toolCalls?.map((tc) => tc.arguments) ?? [];
 }
 
 /**
@@ -190,30 +204,44 @@ interface SortieModele {
  * troisième essai. Ce chemin est le MÊME quelle que soit l'étape : une sortie
  * invalide pendant une question doit être traitée comme une sortie invalide
  * pendant une création.
+ *
+ * Le modèle peut transmettre plusieurs actions dans le même tour (schemas.ts:
+ * MAX_ACTIONS_PAR_TOUR) — la seule façon pour `composer` d'arriver à temps
+ * pour la première construction de la carte, vu que le contrat ne permettait
+ * jusqu'ici qu'une action par tour. Un lot invalide, même partiellement,
+ * invalide le tour entier : pas d'application à moitié d'un tour mal formé.
  */
 async function obtenirActionValidee(session: Session): Promise<SortieModele> {
   const premier = await demanderAuModele(session);
-  if (!premier.toolCall) {
-    return { reply: premier.reply, action: null, appels: 1, repli: false };
+  const bruts1 = bruts(premier);
+  if (!bruts1.length) {
+    return { reply: premier.reply, actions: [], appels: 1, repli: false, tokensSortie: premier.tokensSortie };
   }
 
-  const v1 = validerAction(premier.toolCall.arguments);
+  const v1 = validerLotActions(bruts1);
   if (v1.ok) {
-    return { reply: premier.reply, action: v1.valeur, appels: 1, repli: false };
+    return { reply: premier.reply, actions: v1.valeur, appels: 1, repli: false, tokensSortie: premier.tokensSortie };
   }
 
   // Une relance, une seule, avec le motif exact du rejet.
   const second = await demanderAuModele(session, v1.motif);
-  const v2 = second.toolCall ? validerAction(second.toolCall.arguments) : null;
+  const bruts2 = bruts(second);
+  const v2 = bruts2.length ? validerLotActions(bruts2) : null;
   if (v2?.ok) {
-    return { reply: second.reply || premier.reply, action: v2.valeur, appels: 2, repli: false };
+    return {
+      reply: second.reply || premier.reply,
+      actions: v2.valeur,
+      appels: 2,
+      repli: false,
+      tokensSortie: second.tokensSortie,
+    };
   }
 
   // Deux échecs : repli. Aucun troisième appel.
   return {
     reply:
       "Je n'ai pas réussi à appliquer ça proprement. Je pars sur une base sûre, dites-moi ce que vous voulez changer.",
-    action: null,
+    actions: [],
     appels: 2,
     rejet: v2?.motif ?? v1.motif,
     repli: true,
@@ -297,7 +325,7 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
 
   let appels = 0;
   let repli = false;
-  let action: Action | null = null;
+  let actions: Action[] = [];
   let refus: Reponse["refus"];
   let reply = "";
   let rejet: string | undefined;
@@ -331,7 +359,7 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
   } else {
     const sortie = await obtenirActionValidee(session);
     appels = sortie.appels;
-    action = sortie.action;
+    actions = sortie.actions;
     repli = sortie.repli;
     rejet = sortie.rejet;
     // Le champ manquant est connu en code : si le modèle ne dit rien d'utile,
@@ -340,32 +368,56 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
       sortie.reply ||
       (decision.step === "QUESTION" && decision.champ ? formulerQuestion(decision.champ) : "");
     if (repli) refus = { code: "INVALIDE", motif: rejet ?? "sortie invalide" };
-    journaliser("action_recue", { step: decision.step, appels, action: action?.type ?? null, repli, rejet });
+    journaliser("action_recue", {
+      step: decision.step,
+      appels,
+      actions: actions.map((a) => a.type),
+      repli,
+      rejet,
+    });
+    // Mesure du coût de `composer` : les tokens de sortie de CET appel ont
+    // servi à produire la composition, pas seulement une phrase — c'est ce
+    // chiffre qui dit si le modèle est tenable en production pour ce geste.
+    if (actions.some((a) => a.type === "composer") && sortie.tokensSortie !== undefined) {
+      journaliser("composer_cout", { tokensSortie: sortie.tokensSortie, modele: session.provider.id });
+    }
   }
 
-  // 3. Application de l'action, si elle a survécu à la validation.
-  if (action) {
+  // 3. Application des actions, dans l'ordre, tant qu'aucune n'est refusée.
+  // Un refus arrête le lot : les actions déjà appliquées avant lui restent
+  // acquises (chacune est indépendante), mais on ne continue pas d'appliquer
+  // une suite dont le motif de refus a changé le contexte.
+  const appliquees: Action[] = [];
+  for (const action of actions) {
     const r = appliquerAction(action, session.etat, session.memory);
     if (r.ok) {
       session.etat = r.etat;
       session.memory = r.memory;
+      appliquees.push(action);
       if (action.type === "proposer") session.carteProposee = true;
-      // Un design transmis APRÈS la création de la carte (le contrat n'autorise
-      // qu'une action par tour : il arrive rarement dans le même tour que le
-      // dernier champ requis) doit quand même se voir. On ne reconstruit pas
-      // toute la carte — seule la palette change, pas la structure — on
-      // remplace juste son design par celui que le modèle vient de transmettre.
-      if (action.type === "design" && session.carte) {
-        session.carte = { ...session.carte, design: r.etat.design };
-      }
       journaliser("action_appliquee", { type: action.type, effet: r.effet });
     } else {
       refus = { code: r.code, motif: r.motif };
       journaliser("action_refusee", { type: action.type, code: r.code, motif: r.motif });
-      action = null;
       if (r.code === "VERROU") {
         reply = `${r.motif} Dites-moi si vous voulez que je le déverrouille.`;
       }
+      break;
+    }
+  }
+  actions = appliquees;
+
+  // Un design ou une composition transmis APRÈS la création de la carte (rare
+  // maintenant que `composer` peut arriver dans le même tour que le dernier
+  // champ requis, mais toujours possible sur un ajustement ultérieur) doivent
+  // quand même se voir. On ne reconstruit pas toute la carte : seuls ces deux
+  // champs changent, jamais la structure décidée à la création.
+  if (session.carte) {
+    if (actions.some((a) => a.type === "design")) {
+      session.carte = { ...session.carte, design: session.etat.design };
+    }
+    if (actions.some((a) => a.type === "composer")) {
+      session.carte = { ...session.carte, composition: session.etat.composition };
     }
   }
 
@@ -441,13 +493,13 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
     tour: session.tours,
     step: decisionEffective.step,
     appels,
-    action: action ? action.type : null,
+    actions: actions.map((a) => a.type),
     rejet,
     repli: repli || undefined,
     versionPrompt: PROMPT_VERSION,
   });
 
-  return { reply, decision: decisionEffective, action, refus, verrousPoses: poses, verdicts, appels, repli };
+  return { reply, decision: decisionEffective, actions, refus, verrousPoses: poses, verdicts, appels, repli };
 }
 
 export { creerEtat, majEtat } from "./state/conversationState.ts";

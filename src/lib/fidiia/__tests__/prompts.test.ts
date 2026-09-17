@@ -13,11 +13,16 @@ import assert from "node:assert/strict";
 
 import { IDENTITY, IDENTITY_VERSION } from "../prompts/identity.ts";
 import { GUARDRAILS, GUARDRAILS_VERSION } from "../prompts/guardrails.ts";
-import { CONTRACT, CONTRACT_VERSION } from "../prompts/contract.ts";
+import { CONTRACT, CONTRACT_VERSION, COMPOSER_EXEMPLE } from "../prompts/contract.ts";
 import { MAX_CARACTERES, MAX_MESSAGES, PROMPT_VERSION } from "../prompts/build.ts";
 import { MAX_APPELS_PAR_MESSAGE } from "../index.ts";
 import {
+  ANGLE_DEGRE_MAX,
+  CALQUES_COMPOSES_MAX,
+  CALQUES_COMPOSES_MIN,
+  CHEVAUCHEMENT_MAX_PCT,
   LIBELLE_COURT_MAX,
+  MAX_ACTIONS_PAR_TOUR,
   NB_PROPOSITIONS,
   NOM_MAX,
   NOMS_ACTIONS,
@@ -27,8 +32,14 @@ import {
   OBJECTIF_MIN_TAMPONS,
   PALIERS_MAX,
   PALIERS_MIN,
+  PCT_MAX,
+  PCT_MIN,
   REPLY_MAX,
+  TAILLE_CALQUE_MAX,
+  TAILLE_CALQUE_MIN,
   TEXTE_MAX,
+  ZONE_COLONNES_MAX,
+  ZONE_COLONNES_MIN,
   CibleSchema,
 } from "../validation/schemas.ts";
 import { chiffresNonDeclares, decrireDivergences, motsInterditsTrouves } from "./promptChecks.ts";
@@ -53,12 +64,29 @@ const VALEURS_DECLAREES = [
   MAX_MESSAGES,
   MAX_CARACTERES,
   MAX_APPELS_PAR_MESSAGE,
+  MAX_ACTIONS_PAR_TOUR,
+  CALQUES_COMPOSES_MIN,
+  CALQUES_COMPOSES_MAX,
+  ANGLE_DEGRE_MAX,
+  TAILLE_CALQUE_MIN,
+  TAILLE_CALQUE_MAX,
+  ZONE_COLONNES_MIN,
+  ZONE_COLONNES_MAX,
+  CHEVAUCHEMENT_MAX_PCT,
+  PCT_MIN,
+  PCT_MAX,
 ];
+
+// Le JSON d'exemple de `composer` (COMPOSER_EXEMPLE) porte des coordonnées et
+// des couleurs illustratives, pas des bornes — voir le commentaire à sa
+// définition dans contract.ts. Il est retiré avant le contrôle des chiffres,
+// pas de tout le reste (le texte autour de l'exemple reste vérifié).
+const CONTRACT_SANS_EXEMPLE = CONTRACT.replace(COMPOSER_EXEMPLE, "");
 
 const BLOCS: [string, string][] = [
   ["identity.ts", IDENTITY],
   ["guardrails.ts", GUARDRAILS],
-  ["contract.ts", CONTRACT],
+  ["contract.ts", CONTRACT_SANS_EXEMPLE],
 ];
 
 /* --------------------------------------- le contrôle se contrôle lui-même */

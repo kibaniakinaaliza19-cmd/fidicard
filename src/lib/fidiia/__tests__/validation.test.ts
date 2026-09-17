@@ -1,15 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { validerAction, validerCarte, type Carte } from "../validation/schemas.ts";
+import {
+  MAX_ACTIONS_PAR_TOUR,
+  validerAction,
+  validerCarte,
+  validerLotActions,
+  type Carte,
+  type Composition,
+} from "../validation/schemas.ts";
 import {
   aucunCalqueTampon,
   aucunDoublonPalier,
+  chevauchementExcessif,
+  chevauchementRatio,
   controlerCarte,
+  corrigerComposition,
   dernierPalierRecompense,
   libelleCourtLisible,
   motifsEchec,
   paliersSousObjectif,
+  recadrerRect,
   toutValide,
   zoneCoherenteAvecLeMode,
   aucunMelangePointsTampons,
@@ -21,10 +32,32 @@ import {
 import { creerMemoire, poserVerrou } from "../state/sessionMemory.ts";
 import { construireCarte } from "../index.ts";
 import { creerEtat } from "../state/conversationState.ts";
+import { appliquerAction } from "../engine/actions.ts";
 
 /* -------------------------------------------------- contrat de sortie */
 
-test("les sept actions valides sont acceptées", () => {
+/** Composition minimale mais valide, réutilisée par plusieurs tests. */
+function compositionValide(): Composition {
+  return {
+    fond: { type: "uni", couleur: "#183F32" },
+    calques: [
+      {
+        role: "nom",
+        texte: "Le Petit Grain",
+        x: 8, y: 10, largeur: 60, hauteur: 8,
+        police: "geist", graisse: "bold", taille: 8,
+        couleur: "#FFF5E3", alignement: "gauche",
+      },
+    ],
+    zoneFidelite: {
+      x: 10, y: 55, largeur: 80, hauteur: 20,
+      forme: "cercle", colonnes: 5,
+      icone: "Coffee", couleurRempli: "#1B4D3E", couleurVide: "#3A5850",
+    },
+  };
+}
+
+test("les huit actions valides sont acceptées, composer compris", () => {
   const valides: unknown[] = [
     { type: "proposer", secteur: "Café", ambiance: "chaud" },
     { type: "nom", valeur: "Le Petit Grain" },
@@ -33,10 +66,39 @@ test("les sept actions valides sont acceptées", () => {
     { type: "paliers", paliers: [{ position: 5, label: "-10%", description: "Dix pour cent" }] },
     { type: "recompense", recompense: { texte: "Un café offert", libelleCourt: "Offert" } },
     { type: "modifier", cible: "couleurs" },
+    { type: "composer", ...compositionValide() },
   ];
   for (const a of valides) {
     assert.equal(validerAction(a).ok, true, JSON.stringify(a));
   }
+});
+
+test("un lot de deux actions valides est accepté dans l'ordre", () => {
+  const r = validerLotActions([
+    { type: "recompense", recompense: { texte: "Un café offert", libelleCourt: "Offert" } },
+    { type: "composer", ...compositionValide() },
+  ]);
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.valeur.length, 2);
+    assert.equal(r.valeur[0].type, "recompense");
+    assert.equal(r.valeur[1].type, "composer");
+  }
+});
+
+test("un lot où une seule action est invalide invalide le lot entier", () => {
+  const r = validerLotActions([
+    { type: "recompense", recompense: { texte: "Un café offert", libelleCourt: "Offert" } },
+    { type: "objectif", valeur: 1500 },
+  ]);
+  assert.equal(r.ok, false);
+});
+
+test(`un lot de plus de ${MAX_ACTIONS_PAR_TOUR} actions est refusé avant même d'être lu`, () => {
+  const trop = Array.from({ length: MAX_ACTIONS_PAR_TOUR + 1 }, () => ({ type: "objectif", valeur: 10 }));
+  const r = validerLotActions(trop);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.motif, /trop d'actions/);
 });
 
 test("un objectif hors du schéma (union des deux modes) est rejeté avec un motif", () => {
@@ -281,4 +343,75 @@ test("modifier un élément non verrouillé passe", () => {
 
 test("une carte structurellement fausse est rejetée par le schéma", () => {
   assert.equal(validerCarte({ nomCommerce: "" }).ok, false);
+});
+
+/* -------------------------------------------------------- composition */
+
+test("un rectangle hors cadre est ramené dedans", () => {
+  const r = recadrerRect({ x: 90, y: -5, largeur: 30, hauteur: 200 });
+  assert.equal(r.corrige, true);
+  assert.equal(r.hauteur, 100, "une hauteur au-delà de 100 est plafonnée");
+  assert.ok(r.x + r.largeur <= 100, "le calque ne déborde plus à droite");
+  assert.ok(r.y >= 0, "le calque ne déborde plus en haut");
+});
+
+test("un rectangle déjà dans le cadre n'est pas signalé comme corrigé", () => {
+  const r = recadrerRect({ x: 10, y: 10, largeur: 50, hauteur: 20 });
+  assert.equal(r.corrige, false);
+});
+
+test("chevauchementRatio mesure la part du plus petit rectangle recouverte", () => {
+  const a = { x: 0, y: 0, largeur: 20, hauteur: 10 };
+  const b = { x: 10, y: 0, largeur: 20, hauteur: 10 }; // moitié de a recouverte par b
+  assert.equal(chevauchementRatio(a, b), 0.5);
+  const c = { x: 100, y: 100, largeur: 5, hauteur: 5 };
+  assert.equal(chevauchementRatio(a, c), 0, "aucun recouvrement");
+});
+
+test("deux calques de texte qui se recouvrent trop font échouer la composition", () => {
+  const comp = compositionValide();
+  comp.calques.push({
+    role: "slogan",
+    texte: "Juste à côté",
+    x: comp.calques[0].x,
+    y: comp.calques[0].y,
+    largeur: comp.calques[0].largeur,
+    hauteur: comp.calques[0].hauteur,
+    police: "geist",
+    graisse: "normal",
+    taille: 4,
+    couleur: "#ffffff",
+    alignement: "gauche",
+  });
+  const motif = chevauchementExcessif(comp);
+  assert.ok(motif, "un recouvrement total doit être détecté");
+  assert.match(motif ?? "", /nom/);
+  assert.match(motif ?? "", /slogan/);
+});
+
+test("corrigerComposition répare le contraste sans jamais rejeter", () => {
+  const comp = compositionValide();
+  comp.fond = { type: "uni", couleur: "#F0D060" }; // or/jaune clair
+  comp.calques[0].couleur = "#FFFFFF"; // blanc sur or : interdit
+  const { composition, corrections } = corrigerComposition(comp);
+  assert.equal(composition.calques[0].couleur, "#241812", "le texte devient anthracite");
+  assert.ok(corrections.length > 0);
+});
+
+test("appliquerAction(composer) commet la composition validée dans l'état", () => {
+  const e = creerEtat({});
+  const r = appliquerAction({ type: "composer", ...compositionValide() }, e, creerMemoire());
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.etat.composition?.calques.length, 1);
+});
+
+test("appliquerAction(composer) refuse un chevauchement de texte excessif", () => {
+  const comp = compositionValide();
+  comp.calques.push({ ...comp.calques[0], role: "slogan" }); // exactement au même endroit
+  const r = appliquerAction({ type: "composer", ...comp }, creerEtat({}), creerMemoire());
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.equal(r.code, "INVALIDE");
+    assert.match(r.motif, /recouvr/);
+  }
 });

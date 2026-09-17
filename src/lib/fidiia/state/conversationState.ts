@@ -4,7 +4,7 @@
 // seule. Impossible de le forcer à la main, donc impossible de créer une carte
 // sans les cinq informations minimales du contrat de sortie.
 
-import type { Ambiance, Design, ModeFidelite, Palier, Recompense } from "../validation/schemas.ts";
+import type { Ambiance, Composition, Design, ModeFidelite, Palier, Recompense } from "../validation/schemas.ts";
 
 export type NiveauStyle = "connu" | "partiel" | "inconnu";
 
@@ -39,6 +39,10 @@ export interface EtatBrut {
   /** Design transmis par le modèle (action `design`). Absent : le corpus
    *  décide seul, voir construireCarte(). */
   design?: Design;
+  /** Composition transmise par le modèle (action `composer`), déjà corrigée
+   *  (recadrage, contraste — voir validation/quality.ts). Absente : les
+   *  valeurs codées en dur de toCardDoc.ts servent de repli. */
+  composition?: Composition;
 }
 
 export interface ConversationState extends EtatBrut {

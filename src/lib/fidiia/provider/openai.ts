@@ -70,6 +70,7 @@ interface ReponseChat {
       tool_calls?: { function?: { name?: string; arguments?: string } }[];
     };
   }[];
+  usage?: { completion_tokens?: number };
 }
 
 /**
@@ -181,24 +182,35 @@ export function creerOpenAIProvider(options: OptionsOpenAI = {}): LLMProvider {
         journaliser("chat", "error", modele, { reason: (err as Error).message.slice(0, 300) });
         throw err;
       }
-      journaliser("chat", "success", modele);
+      journaliser("chat", "success", modele, { tokensSortie: data.usage?.completion_tokens });
 
       const msg = data.choices?.[0]?.message;
+      const tokensSortie = data.usage?.completion_tokens;
 
       // Chemin natif : conservé pour le jour où `tools` ne sera plus vide.
-      const appelNatif = msg?.tool_calls?.[0]?.function;
-      if (appelNatif?.name) {
-        return { reply: msg?.content ?? "", toolCall: { name: appelNatif.name, arguments: lireArguments(appelNatif.arguments) } };
+      // Plusieurs appels natifs sont possibles dans une même réponse — on les
+      // garde tous, pas seulement le premier.
+      const appelsNatifs = (msg?.tool_calls ?? [])
+        .map((tc) => tc.function)
+        .filter((f): f is { name: string; arguments?: string } => typeof f?.name === "string");
+      if (appelsNatifs.length) {
+        return {
+          reply: msg?.content ?? "",
+          toolCalls: appelsNatifs.map((f) => ({ name: f.name, arguments: lireArguments(f.arguments) })),
+          tokensSortie,
+        };
       }
 
       // Chemin réel aujourd'hui : le contrat (prompts/contract.ts) demande un
-      // objet `{ reply, action }` dans le texte de la réponse.
+      // objet `{ reply, action }` dans le texte de la réponse. `action` est un
+      // objet unique OU un tableau d'objets (schemas.ts:MAX_ACTIONS_PAR_TOUR).
       const { reply, action } = decoderContenu(msg?.content ?? "");
-      const type = action && typeof action === "object" ? (action as Record<string, unknown>).type : undefined;
-      return {
-        reply,
-        ...(typeof type === "string" ? { toolCall: { name: type, arguments: action } } : {}),
-      };
+      const bruts = action === null ? [] : Array.isArray(action) ? action : [action];
+      const toolCalls = bruts
+        .filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === "object")
+        .map((a) => ({ name: a.type, arguments: a as unknown }))
+        .filter((tc): tc is { name: string; arguments: unknown } => typeof tc.name === "string");
+      return { reply, ...(toolCalls.length ? { toolCalls } : {}), tokensSortie };
     },
 
     async vision(image: string, prompt: string): Promise<VisionResult> {

@@ -5,9 +5,9 @@
 //   2. Une action qui touche un élément verrouillé est REJETÉE ici, en code.
 //      Le prompt le décourage ; ce fichier l'empêche.
 
-import type { Action, Cible } from "../validation/schemas.ts";
+import type { Action, Cible, Composition } from "../validation/schemas.ts";
 import { bornesObjectif, CibleSchema } from "../validation/schemas.ts";
-import { nettoyerContraste } from "../validation/quality.ts";
+import { chevauchementExcessif, corrigerComposition, nettoyerContraste } from "../validation/quality.ts";
 import type { ConversationState } from "../state/conversationState.ts";
 import { majEtat } from "../state/conversationState.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
@@ -52,6 +52,31 @@ export function appliquerAction(
       const e = majEtat(etat, { secteur: action.secteur, ambiance: action.ambiance });
       const m = noterPreference(noterDecision(memory, "ambiance", action.ambiance), `ambiance ${action.ambiance}`);
       return { ok: true, etat: e, memory: m, effet: `trois propositions ${action.secteur} / ${action.ambiance}` };
+    }
+
+    case "composer": {
+      // Deux calques de texte qui se recouvrent trop ne se corrigent pas :
+      // déplacer arbitrairement l'un des deux romprait la composition voulue
+      // par le modèle plus sûrement qu'un refus qui lui laisse recomposer.
+      const brute: Composition = { fond: action.fond, calques: action.calques, zoneFidelite: action.zoneFidelite };
+      const motifChevauchement = chevauchementExcessif(brute);
+      if (motifChevauchement) {
+        return { ok: false, code: "INVALIDE", motif: `composition refusée : ${motifChevauchement}` };
+      }
+      // Le reste se corrige : calques hors cadre ramenés dedans, contraste
+      // texte/fond réparé calque par calque — voir quality.ts.
+      const { composition, corrections } = corrigerComposition(brute);
+      const e = majEtat(etat, { composition });
+      const m = noterDecision(memory, "composition", {
+        calques: composition.calques.length,
+        corrections: corrections.length,
+      });
+      return {
+        ok: true,
+        etat: e,
+        memory: m,
+        effet: corrections.length ? `composition appliquée (${corrections.join(", ")})` : "composition appliquée",
+      };
     }
 
     case "nom": {

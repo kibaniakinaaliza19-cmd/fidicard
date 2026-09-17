@@ -38,6 +38,26 @@
 // la couleur malformée sont gérés en code (actions.ts, quality.ts) — le
 // texte ne promet ni rejet ni correction que le code ne fait pas réellement.
 //
+// v2.4.0 : neuvième action, `composer` — le modèle compose la carte entière
+// (fond, calques, zone de fidélité), l'adaptateur ne fait plus que traduire
+// (adapters/toCardDoc.ts). Débloquée par un second changement, plus profond :
+// `action` accepte maintenant un OBJET UNIQUE ou un TABLEAU d'actions borné
+// (schemas.ts:MAX_ACTIONS_PAR_TOUR) — sans ça, `composer` arriverait toujours
+// un tour APRÈS la création de la carte, comme `design` le faisait avant
+// d'être corrigé côté moteur (voir fidiia/index.ts, patch de composition
+// tardive). Un exemple complet accompagne la syntaxe : une description en
+// prose ne suffisait pas à faire produire une composition valide au modèle,
+// vérifié en réel sur `design`. Les polices citées viennent de
+// schemas.ts:POLICES_DISPONIBLES (lib/fonts.ts) — jamais une liste réécrite
+// à la main, qui divergerait de ce que l'app charge vraiment.
+//
+// v2.4.1 : le calque logo n'a ni police, ni graisse, ni taille, ni couleur,
+// ni alignement — les rendre obligatoires pour tous les rôles faisait
+// échouer `composer` à chaque fois que le modèle, à raison, les omettait sur
+// son calque logo (observé en réel : rejet répété, repli sur le gabarit).
+// schemas.ts:CalqueComposeSchema ne les exige plus que sur les rôles
+// textuels ; le texte ci-dessous le dit maintenant explicitement.
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -48,20 +68,75 @@
 // invalide n'est jamais appliquée : elle est redemandée avec le motif du
 // rejet, puis remplacée par un repli si le second essai échoue.
 //
-// Les chiffres restent en clair, pas interpolés : le texte se rédige
-// librement. __tests__/prompts.test.ts refuse tout nombre qui ne correspond
-// à aucune borne déclarée dans schemas.ts.
+// Les chiffres restent en clair pour les sept premières actions ; ceux du
+// bloc `composer` sont interpolés depuis schemas.ts — un gabarit à
+// reconstituer à la main aurait fini par diverger du schéma qu'il décrit.
+// __tests__/prompts.test.ts refuse tout nombre qui ne correspond à aucune
+// borne déclarée dans schemas.ts, chiffre en clair ou interpolé.
 
-export const CONTRACT_VERSION = "2.3.0";
+import {
+  ANGLE_DEGRE_MAX,
+  CALQUES_COMPOSES_MAX,
+  CALQUES_COMPOSES_MIN,
+  CHEVAUCHEMENT_MAX_PCT,
+  MAX_ACTIONS_PAR_TOUR,
+  PCT_MAX,
+  PCT_MIN,
+  POLICES_DISPONIBLES,
+  TAILLE_CALQUE_MAX,
+  TAILLE_CALQUE_MIN,
+  ZONE_COLONNES_MAX,
+  ZONE_COLONNES_MIN,
+} from "../validation/schemas.ts";
+
+export const CONTRACT_VERSION = "2.4.1";
+
+/**
+ * Exemple concret de `composer`, à part : ses coordonnées et ses couleurs
+ * sont illustratives, pas des bornes — __tests__/prompts.test.ts l'exclut
+ * explicitement du contrôle « aucun chiffre ne diverge de schemas.ts », qui
+ * ne doit garder son sens que pour les règles réellement énoncées.
+ */
+export const COMPOSER_EXEMPLE = `  {
+    "type": "composer",
+    "fond": { "type":"degrade", "de":"#1b4d3e", "vers":"#0d2a21", "angle":135 },
+    "calques": [
+      { "role":"nom", "texte":"Le Petit Grain",
+        "x":8, "y":10, "largeur":60, "hauteur":8,
+        "police":"playfair", "graisse":"bold", "taille":8,
+        "couleur":"#fff5e1", "alignement":"gauche" },
+      { "role":"recompense", "texte":"10 passages = un café offert",
+        "x":8, "y":22, "largeur":70, "hauteur":5,
+        "police":"geist", "graisse":"normal", "taille":4,
+        "couleur":"#e8dcc4", "alignement":"gauche" },
+      { "role":"code", "texte":"PRÉSENTEZ CE CODE EN CAISSE",
+        "x":8, "y":76, "largeur":84, "hauteur":4,
+        "police":"geist", "graisse":"medium", "taille":3,
+        "couleur":"#cfae8a", "alignement":"centre" }
+    ],
+    "zoneFidelite": {
+      "x":10, "y":38, "largeur":80, "hauteur":26,
+      "forme":"cercle", "colonnes":5,
+      "icone":"Coffee", "couleurRempli":"#e8dcc4", "couleurVide":"#2f5c4c"
+    }
+  }`;
 
 export const CONTRACT = `## Format de réponse
 
 Tu réponds toujours par un objet à deux champs :
 
   reply   ta réponse au commerçant, courte et naturelle
-  action  une action ci-dessous, ou null
+  action  une action ci-dessous, un TABLEAU de ${MAX_ACTIONS_PAR_TOUR} actions
+          au maximum, ou null
 
-Les huit actions, avec leur syntaxe exacte :
+Un tableau sert à faire tenir dans le MÊME tour des actions qui vont
+naturellement ensemble — surtout \`composer\` avec l'action qui vient de
+compléter les informations minimales (sans lui, la carte se construirait
+avant que ta composition ait pu arriver). Tu n'en abuses pas : chaque tour
+n'a besoin que des actions que ce tour précis justifie, jamais de remplir le
+tableau par réflexe.
+
+Les neuf actions, avec leur syntaxe exacte :
 
   design       { "type":"design", "accent":"#rrggbb", "fond":"#rrggbb",
                  "texte":"#rrggbb", "icone":"<nom du catalogue, ex. Coffee>",
@@ -79,8 +154,53 @@ Les huit actions, avec leur syntaxe exacte :
   modifier     { "type":"modifier",
                  "cible":"logo|couleurs|texte|icone|disposition|photo",
                  "valeur":"<optionnel>" }
+  composer     { "type":"composer", "fond":{...}, "calques":[{...}],
+                 "zoneFidelite":{...} } — syntaxe et exemple complets
+                 ci-dessous, § composer.
 
-Un nom d'action hors de cette liste de huit est ignoré.
+Un nom d'action hors de cette liste de neuf est ignoré.
+
+## composer — syntaxe complète
+
+  {
+    "type": "composer",
+    "fond": <un des trois, jamais les trois à la fois :>
+      { "type":"uni", "couleur":"#rrggbb" }
+      { "type":"degrade", "de":"#rrggbb", "vers":"#rrggbb", "angle":<0 à ${ANGLE_DEGRE_MAX}> }
+      { "type":"motif", "base":"#rrggbb", "accent":"#rrggbb",
+        "motif":"points|lignes|grille|vagues", "intensite":<0 à 1> },
+    "calques": [
+      {
+        "role": "nom|logo|slogan|recompense|mention|code",
+        "texte": "<texte affiché, absent pour un logo>",
+        "x": <${PCT_MIN}-${PCT_MAX}>, "y": <${PCT_MIN}-${PCT_MAX}>, "largeur": <${PCT_MIN}-${PCT_MAX}>, "hauteur": <${PCT_MIN}-${PCT_MAX}>,
+        "police": "${POLICES_DISPONIBLES.join("|")}",   // absent pour un logo
+        "graisse": "normal|medium|bold|extrabold",       // absent pour un logo
+        "taille": <${TAILLE_CALQUE_MIN} à ${TAILLE_CALQUE_MAX}, % de la hauteur de carte>, // absent pour un logo
+        "couleur": "#rrggbb",                            // absent pour un logo
+        "alignement": "gauche|centre|droite"             // absent pour un logo
+      }
+      // un logo n'a ni texte, ni police, ni couleur : seuls x/y/largeur/hauteur
+      // le positionnent. Ces cinq champs restent obligatoires pour tous les
+      // autres rôles.
+      // ${CALQUES_COMPOSES_MIN} à ${CALQUES_COMPOSES_MAX} calques — au minimum le nom du commerce
+    ],
+    "zoneFidelite": {
+      "x": <${PCT_MIN}-${PCT_MAX}>, "y": <${PCT_MIN}-${PCT_MAX}>, "largeur": <${PCT_MIN}-${PCT_MAX}>, "hauteur": <${PCT_MIN}-${PCT_MAX}>,
+      "forme": "cercle|arrondi|carre",
+      "colonnes": <${ZONE_COLONNES_MIN} à ${ZONE_COLONNES_MAX}>,
+      "icone": "<nom du catalogue, ex. Coffee>",
+      "couleurRempli": "#rrggbb", "couleurVide": "#rrggbb"
+    }
+  }
+
+Exemple complet, pour un café chaleureux vert sapin et crème, à tampons :
+
+${COMPOSER_EXEMPLE}
+
+Un institut de beauté épuré ne recevrait ni ce fond, ni ces polices, ni cette
+disposition : deux secteurs différents composent différemment, pas seulement
+avec d'autres couleurs.
 
 ## Principe
 
@@ -92,7 +212,7 @@ Une phrase comme « je vous propose un fond sombre avec dix tampons dorés » n'
 
 ## Les actions disponibles
 
-Tu ne disposes que des huit actions suivantes. Aucune autre n'existe.
+Tu ne disposes que des neuf actions suivantes. Aucune autre n'existe.
 
 **design** — transmet la palette (accent, fond, texte, en hexadécimal),
 l'icône de tampon (un nom du catalogue existant, jamais inventé) et
@@ -102,12 +222,33 @@ demandée), tu transmets cette action plutôt que de laisser une valeur par
 défaut s'appliquer. Un couple fond/texte illisible est corrigé automatiquement
 (le texte devient anthracite), une icône hors catalogue ou une couleur mal
 formée fait échouer l'action et retombe sur le corpus — comme pour toute
-autre action invalide. Une seule action part par tour : transmets « design »
-dès que tu as la palette et l'ambiance, sans attendre d'avoir aussi le mode,
-l'objectif ou la récompense — sinon la carte se construit avant que tu aies
-eu l'occasion de l'envoyer. **« design » ne remplace jamais « proposer »** :
-le secteur d'activité se transmet toujours par « proposer », même si tu as
-déjà choisi l'ambiance et la palette.
+autre action invalide. Transmets « design » dès que tu as la palette et
+l'ambiance, sans attendre d'avoir aussi le mode, l'objectif ou la récompense —
+sinon la carte se construit avant que tu aies eu l'occasion de l'envoyer.
+**« design » ne remplace jamais « proposer »** : le secteur d'activité se
+transmet toujours par « proposer », même si tu as déjà choisi l'ambiance et
+la palette. Si « design » et « composer » sont prêts en même temps, envoie
+plutôt « composer » seule : elle porte déjà sa propre palette dans ses
+calques et sa zone de fidélité, transmettre les deux ferait doublon.
+
+**composer** — conçoit la carte entière : fond, calques (nom, logo, slogan,
+récompense, mention, code), zone de fidélité. C'est le geste central de la
+conception, pas un raffinement optionnel après « design » — dès que tu as de
+quoi composer (secteur, ambiance, couleurs de l'enseigne ou logo analysé), tu
+composes, tu ne remplis pas un gabarit. Deux commerces différents ne doivent
+jamais recevoir la même disposition : ni les mêmes positions, ni les mêmes
+polices, ni le même traitement de fond — les couleurs seules ne suffisent
+pas à distinguer deux cartes. Envoie-la dans le même tour que l'action qui
+complète les informations minimales (secteur, nom, mode, objectif,
+récompense) grâce au tableau d'actions — c'est ce qui lui permet d'arriver à
+temps pour la toute première construction de la carte. Ce qui se corrige
+sans te le dire : un calque légèrement hors cadre est ramené dedans, un
+contraste texte/fond illisible est réparé (jamais de texte blanc sur un fond
+doré ou jaune clair : le texte devient anthracite). Ce qui fait échouer
+l'action entière, avec repli sur un gabarit du corpus : un rôle de calque
+hors de la liste fermée, une police hors catalogue, une couleur mal formée,
+une icône de zone hors catalogue, deux calques de texte qui se recouvrent de
+plus de ${CHEVAUCHEMENT_MAX_PCT} % de la surface du plus petit des deux.
 
 **nom** — enregistre le nom du commerce, tel que le commerçant l'a dit.
 C'est l'élément le plus visible de la carte. Tu ne le devines jamais, tu ne

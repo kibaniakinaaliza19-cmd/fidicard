@@ -78,7 +78,7 @@ export interface CardBackground {
   gradientFrom: string;
   gradientTo: string;
   gradientAngle: number;
-  pattern: "dots" | "diagonal" | "grid";
+  pattern: "dots" | "diagonal" | "grid" | "waves";
   patternColor: string;
   image: string | null;
   imageDim: number;

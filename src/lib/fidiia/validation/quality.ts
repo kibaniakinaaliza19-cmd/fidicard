@@ -5,8 +5,8 @@
 // au commerçant. Une carte qui échoue n'est pas présentée avec un
 // avertissement : elle est corrigée ou remplacée.
 
-import type { Carte } from "./schemas.ts";
-import { bornesObjectif, LIBELLE_COURT_MAX } from "./schemas.ts";
+import type { Carte, Composition, Fond, RoleCalque } from "./schemas.ts";
+import { bornesObjectif, CHEVAUCHEMENT_MAX_PCT, LIBELLE_COURT_MAX } from "./schemas.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
 import { estVerrouille } from "../state/sessionMemory.ts";
 
@@ -216,6 +216,117 @@ export function nettoyerContraste(fond: string, texte: string): { texte: string;
     return { texte: ANTHRACITE, corrige: true };
   }
   return { texte, corrige: false };
+}
+
+/* -------------------------------------------------------- composition */
+//
+// Deux familles de contrôles, comme pour le contraste ci-dessus : ce qui se
+// corrige (position hors cadre, contraste illisible) se corrige en silence ;
+// ce qui ne se corrige pas (chevauchement de texte) fait échouer l'action
+// `composer` entière — voir engine/actions.ts.
+
+export interface RectPct {
+  x: number;
+  y: number;
+  largeur: number;
+  hauteur: number;
+}
+
+/** Ramène un rectangle (en % du canvas) dans le cadre de la carte. Ni rejeté,
+ *  ni signalé au modèle comme une erreur — juste corrigé. */
+export function recadrerRect<T extends RectPct>(r: T): T & { corrige: boolean } {
+  const largeur = Math.min(100, Math.max(0, r.largeur));
+  const hauteur = Math.min(100, Math.max(0, r.hauteur));
+  const x = Math.min(Math.max(0, r.x), 100 - largeur);
+  const y = Math.min(Math.max(0, r.y), 100 - hauteur);
+  const corrige = x !== r.x || y !== r.y || largeur !== r.largeur || hauteur !== r.hauteur;
+  return { ...r, x, y, largeur, hauteur, corrige };
+}
+
+function aire(r: RectPct): number {
+  return r.largeur * r.hauteur;
+}
+
+/** Part de la surface du plus petit des deux rectangles couverte par
+ *  l'intersection — 0 si aucun chevauchement, 1 si l'un contient l'autre. */
+export function chevauchementRatio(a: RectPct, b: RectPct): number {
+  const ix = Math.max(0, Math.min(a.x + a.largeur, b.x + b.largeur) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.hauteur, b.y + b.hauteur) - Math.max(a.y, b.y));
+  const inter = ix * iy;
+  const plusPetit = Math.min(aire(a), aire(b));
+  return inter > 0 && plusPetit > 0 ? inter / plusPetit : 0;
+}
+
+/** Couleur représentative du fond, pour vérifier le contraste d'un calque de
+ *  texte contre lui. Un dégradé n'a pas UNE couleur : on vérifie contre son
+ *  point de départ, là où les calques du haut de carte se posent le plus
+ *  souvent — une approximation assumée, pas un rendu pixel par pixel. */
+export function couleurDominanteFond(fond: Fond): string {
+  if (fond.type === "uni") return fond.couleur;
+  if (fond.type === "degrade") return fond.de;
+  return fond.base;
+}
+
+/** Rôles porteurs de texte réel — le logo est une image, il n'a ni contraste
+ *  de texte ni recouvrement de lecture à vérifier. */
+const ROLES_TEXTE = new Set<RoleCalque>(["nom", "slogan", "recompense", "mention", "code"]);
+
+/**
+ * Corrige une composition : calques et zone ramenés dans le cadre, contraste
+ * texte/fond réparé calque par calque. Ne refuse jamais rien — voir
+ * `chevauchementExcessif` pour la seule vérification qui, elle, peut refuser.
+ */
+export function corrigerComposition(composition: Composition): {
+  composition: Composition;
+  corrections: string[];
+} {
+  const corrections: string[] = [];
+  const fondCouleur = couleurDominanteFond(composition.fond);
+
+  const calques = composition.calques.map((c) => {
+    const rect = recadrerRect(c);
+    if (rect.corrige) corrections.push(`calque « ${c.role} » ramené dans le cadre`);
+    let couleur = c.couleur;
+    // Le schéma n'exige couleur/police/etc. que sur les rôles textuels (voir
+    // schemas.ts:CalqueComposeSchema) — un calque logo n'en a jamais.
+    if (ROLES_TEXTE.has(c.role) && c.couleur) {
+      const correction = nettoyerContraste(fondCouleur, c.couleur);
+      couleur = correction.texte;
+      if (correction.corrige) corrections.push(`contraste corrigé sur le calque « ${c.role} »`);
+    }
+    return { ...c, x: rect.x, y: rect.y, largeur: rect.largeur, hauteur: rect.hauteur, couleur };
+  });
+
+  const zoneRect = recadrerRect(composition.zoneFidelite);
+  if (zoneRect.corrige) corrections.push("zone de fidélité ramenée dans le cadre");
+  const zoneFidelite = {
+    ...composition.zoneFidelite,
+    x: zoneRect.x,
+    y: zoneRect.y,
+    largeur: zoneRect.largeur,
+    hauteur: zoneRect.hauteur,
+  };
+
+  return { composition: { ...composition, calques, zoneFidelite }, corrections };
+}
+
+/**
+ * Seuil au-delà duquel deux calques de texte se recouvrent trop pour rester
+ * lisibles l'un et l'autre. Contrairement au contraste, ça ne se corrige
+ * pas : déplacer arbitrairement l'un des deux romprait la composition voulue
+ * par le modèle plus sûrement que refuser et lui laisser recomposer.
+ */
+export function chevauchementExcessif(composition: Composition): string | null {
+  const textes = composition.calques.filter((c) => ROLES_TEXTE.has(c.role));
+  for (let i = 0; i < textes.length; i++) {
+    for (let j = i + 1; j < textes.length; j++) {
+      const ratio = chevauchementRatio(textes[i], textes[j]);
+      if (ratio > CHEVAUCHEMENT_MAX_PCT / 100) {
+        return `« ${textes[i].role} » et « ${textes[j].role} » se recouvrent à ${Math.round(ratio * 100)} %`;
+      }
+    }
+  }
+  return null;
 }
 
 /** Exécute tous les contrôles. L'ordre n'a pas d'importance : ils sont purs. */

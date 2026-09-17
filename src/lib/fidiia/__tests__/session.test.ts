@@ -68,7 +68,7 @@ test("VERROU : « ne touche pas au logo » tient face à une demande directe", a
   assert.equal(estVerrouille(session.memory, "logo"), true);
 
   const r = await envoyerMessage(session, "Change seulement le logo");
-  assert.equal(r.action, null, "aucune action ne doit être appliquée sur un élément verrouillé");
+  assert.deepEqual(r.actions, [], "aucune action ne doit être appliquée sur un élément verrouillé");
   assert.equal(r.refus?.code, "VERROU");
   assert.equal(estVerrouille(session.memory, "logo"), true, "le verrou survit à la tentative");
 });
@@ -91,7 +91,7 @@ test("MODIFICATION CIBLÉE : une autre cible n'est pas bloquée par un verrou", 
   await envoyerMessage(session, "Ne touche pas au logo");
   const r = await envoyerMessage(session, "Change seulement les couleurs");
   assert.equal(r.refus, undefined);
-  assert.equal(r.action?.type, "modifier");
+  assert.equal(r.actions[0]?.type, "modifier");
 });
 
 test("le verrou se lève sur demande explicite, et seulement là", async () => {
@@ -110,21 +110,21 @@ test("le verrou se lève sur demande explicite, et seulement là", async () => {
 test("une sortie invalide n'est jamais appliquée", async () => {
   const session = creerSession({ etat: { secteur: "Garage" } });
   const r = await envoyerMessage(session, DECLENCHEURS_INVALIDES.objectifHorsBornes);
-  assert.equal(r.action, null);
+  assert.deepEqual(r.actions, []);
   assert.equal(session.etat.objectif, undefined, "l'objectif invalide n'a pas été écrit");
 });
 
 test("un libellé trop long est rejeté, la récompense n'est pas enregistrée", async () => {
   const session = creerSession({ etat: { secteur: "Salon de coiffure" } });
   const r = await envoyerMessage(session, DECLENCHEURS_INVALIDES.libelleTropLong);
-  assert.equal(r.action, null);
+  assert.deepEqual(r.actions, []);
   assert.equal(session.etat.recompense, undefined);
 });
 
 test("une action inconnue est ignorée, jamais interprétée", async () => {
   const session = creerSession({ etat: { secteur: "Café" } });
   const r = await envoyerMessage(session, DECLENCHEURS_INVALIDES.actionInconnue);
-  assert.equal(r.action, null);
+  assert.deepEqual(r.actions, []);
 });
 
 test("le modèle se corrige à la relance : deux appels, action appliquée", async () => {
@@ -132,7 +132,7 @@ test("le modèle se corrige à la relance : deux appels, action appliquée", asy
   const r = await envoyerMessage(session, DECLENCHEURS_INVALIDES.invalidePuisValide);
   assert.equal(r.appels, 2);
   assert.equal(r.repli, false);
-  assert.equal(r.action?.type, "objectif");
+  assert.equal(r.actions[0]?.type, "objectif");
   assert.equal(session.etat.objectif, 10);
 });
 

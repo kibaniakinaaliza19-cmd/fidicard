@@ -27,8 +27,14 @@ export interface ToolCall {
 export interface ChatResult {
   /** Texte affiché au commerçant. */
   reply: string;
-  /** Action demandée par le modèle, brute. Validation obligatoire ensuite. */
-  toolCall?: ToolCall;
+  /** Actions demandées par le modèle, brutes. Validation obligatoire ensuite.
+   *  Un tour peut en contenir plusieurs — voir schemas.ts:MAX_ACTIONS_PAR_TOUR
+   *  et prompts/contract.ts : c'est ce qui permet à `composer` d'arriver au
+   *  même tour que l'action qui complète les informations minimales. */
+  toolCalls?: ToolCall[];
+  /** Tokens de sortie réellement facturés par ce tour, quand le fournisseur
+   *  les communique. Sert à mesurer le coût de `composer` — voir index.ts. */
+  tokensSortie?: number;
 }
 
 export interface VisionResult {

@@ -90,8 +90,8 @@ test("un appel d'outil est remonté, ses arguments désérialisés", async () =>
   const r = await p.chat([{ role: "user", content: "10 tampons" }], []);
 
   assert.equal(r.reply, "Voilà");
-  assert.equal(r.toolCall?.name, "objectif");
-  assert.deepEqual(r.toolCall?.arguments, { type: "objectif", valeur: 10 });
+  assert.equal(r.toolCalls?.[0]?.name, "objectif");
+  assert.deepEqual(r.toolCalls?.[0]?.arguments, { type: "objectif", valeur: 10 });
 });
 
 test("des arguments en JSON cassé ne font pas tomber l'appel", async () => {
@@ -102,7 +102,7 @@ test("des arguments en JSON cassé ne font pas tomber l'appel", async () => {
   });
   const p = creerOpenAIProvider({ cle: CLE, modele: MODELE, fetchImpl: f.impl });
   const r = await p.chat([{ role: "user", content: "?" }], []);
-  assert.equal(r.toolCall?.arguments, "{pas du json");
+  assert.equal(r.toolCalls?.[0]?.arguments, "{pas du json");
 });
 
 test("les outils sont traduits au format attendu", async () => {

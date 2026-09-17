@@ -22,7 +22,7 @@ async function dire(session: ReturnType<typeof creerSession>, texte: string): Pr
   const details = [
     `étape ${r.decision.step}`,
     `appels ${r.appels}`,
-    r.action ? `action ${r.action.type}` : "action —",
+    r.actions.length ? `actions ${r.actions.map((a) => a.type).join("+")}` : "action —",
   ];
   if (r.verrousPoses.length) details.push(`verrou posé : ${r.verrousPoses.join(", ")}`);
   if (r.refus) details.push(`REFUS ${r.refus.code}`);
@@ -84,7 +84,7 @@ bloc("7. JOURNAL — aucun contenu de conversation, aucune donnée personnelle")
 for (const e of session.journal) {
   console.log(
     `  tour ${String(e.tour).padStart(2)} · ${e.step.padEnd(12)} · ${e.appels} appel(s) · ` +
-      `action ${e.action ?? "—"}${e.repli ? " · REPLI" : ""} · prompt ${e.versionPrompt}`,
+      `actions ${e.actions.length ? e.actions.join("+") : "—"}${e.repli ? " · REPLI" : ""} · prompt ${e.versionPrompt}`,
   );
 }
 

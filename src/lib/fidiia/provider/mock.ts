@@ -64,6 +64,35 @@ function detecterNomCommerce(texteBrut: string): string | undefined {
   return m ? m[1].trim() : undefined;
 }
 
+/** Une composition valide, pour les scénarios de test qui déclenchent
+ *  l'action `composer` sans dépendre d'un vrai modèle génératif. */
+function compositionExemple() {
+  return {
+    fond: { type: "degrade" as const, de: "#1b4d3e", vers: "#0d2a21", angle: 135 },
+    calques: [
+      {
+        role: "nom" as const,
+        texte: "Le Petit Grain",
+        x: 8, y: 10, largeur: 60, hauteur: 8,
+        police: "playfair", graisse: "bold" as const, taille: 8,
+        couleur: "#fff5e1", alignement: "gauche" as const,
+      },
+      {
+        role: "recompense" as const,
+        texte: "10 passages = un café offert",
+        x: 8, y: 24, largeur: 70, hauteur: 5,
+        police: "geist", graisse: "normal" as const, taille: 4,
+        couleur: "#e8dcc4", alignement: "gauche" as const,
+      },
+    ],
+    zoneFidelite: {
+      x: 10, y: 55, largeur: 80, hauteur: 20,
+      forme: "cercle" as const, colonnes: 5,
+      icone: "Coffee", couleurRempli: "#1b4d3e", couleurVide: "#3a5850",
+    },
+  };
+}
+
 /** Réponses figées, indexées par déclencheur. L'ordre compte : première règle
  *  qui matche.
  *
@@ -81,31 +110,65 @@ function repondre(dernier: string, contexte: string): ChatResult {
   if (n.includes("__invalide_objectif__")) {
     return {
       reply: "Voilà, j'ai réglé l'objectif.",
-      toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 1500 } },
+      toolCalls: [{ name: "objectif", arguments: { type: "objectif", valeur: 1500 } }],
     };
   }
   if (n.includes("__invalide_libelle__")) {
     return {
       reply: "Récompense enregistrée.",
-      toolCall: {
-        name: "recompense",
-        arguments: {
-          type: "recompense",
-          recompense: { texte: "Une coupe offerte", libelleCourt: "COUPE OFFERTE" },
+      toolCalls: [
+        {
+          name: "recompense",
+          arguments: {
+            type: "recompense",
+            recompense: { texte: "Une coupe offerte", libelleCourt: "COUPE OFFERTE" },
+          },
         },
-      },
+      ],
     };
   }
   if (n.includes("__action_inconnue__")) {
     return {
       reply: "Je publie la carte.",
-      toolCall: { name: "publier", arguments: { type: "publier" } },
+      toolCalls: [{ name: "publier", arguments: { type: "publier" } }],
     };
   }
   if (n.includes("__invalide_puis_valide__")) {
     return {
       reply: "Objectif réglé.",
-      toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 1500 } },
+      toolCalls: [{ name: "objectif", arguments: { type: "objectif", valeur: 1500 } }],
+    };
+  }
+  // Une composition valide, seule — teste le chemin `composer` isolé.
+  if (n.includes("__composer_seul__")) {
+    return {
+      reply: "Voici une composition.",
+      toolCalls: [{ name: "composer", arguments: { type: "composer", ...compositionExemple() } }],
+    };
+  }
+  // Composition ET récompense dans le MÊME tour — teste le tableau d'actions
+  // qui débloque `composer` : sans lui, la carte se construirait avant que le
+  // modèle ait pu transmettre sa composition (une seule action par tour).
+  if (n.includes("__composer_et_recompense__")) {
+    return {
+      reply: "Récompense et composition enregistrées.",
+      toolCalls: [
+        { name: "recompense", arguments: { type: "recompense", recompense: { texte: "Un café offert", libelleCourt: "Offert" } } },
+        { name: "composer", arguments: { type: "composer", ...compositionExemple() } },
+      ],
+    };
+  }
+  // Trop d'actions dans un seul tour — teste le refus MAX_ACTIONS_PAR_TOUR.
+  if (n.includes("__trop_actions__")) {
+    return {
+      reply: "Tout est réglé.",
+      toolCalls: [
+        { name: "mode", arguments: { type: "mode", mode: "points" } },
+        { name: "objectif", arguments: { type: "objectif", valeur: 100 } },
+        { name: "recompense", arguments: { type: "recompense", recompense: { texte: "Offert", libelleCourt: "Offert" } } },
+        { name: "nom", arguments: { type: "nom", valeur: "Chez Test" } },
+        { name: "proposer", arguments: { type: "proposer", secteur: "Café", ambiance: "chaud" } },
+      ],
     };
   }
 
@@ -122,7 +185,7 @@ function repondre(dernier: string, contexte: string): ChatResult {
             : "texte";
     return {
       reply: "C'est fait, je n'ai touché qu'à cette partie.",
-      toolCall: { name: "modifier", arguments: { type: "modifier", cible } },
+      toolCalls: [{ name: "modifier", arguments: { type: "modifier", cible } }],
     };
   }
 
@@ -130,7 +193,7 @@ function repondre(dernier: string, contexte: string): ChatResult {
   if (/\bpoints?\b/.test(n)) {
     return {
       reply: "Je passe votre programme en points.",
-      toolCall: { name: "mode", arguments: { type: "mode", mode: "points" } },
+      toolCalls: [{ name: "mode", arguments: { type: "mode", mode: "points" } }],
     };
   }
 
@@ -144,7 +207,7 @@ function repondre(dernier: string, contexte: string): ChatResult {
     const secteur = detecterSecteur(dernier) ?? detecterSecteur(contexte) ?? "Commerce";
     return {
       reply: "Voici trois propositions. Cliquez celle qui vous parle.",
-      toolCall: { name: "proposer", arguments: { type: "proposer", secteur, ambiance } },
+      toolCalls: [{ name: "proposer", arguments: { type: "proposer", secteur, ambiance } }],
     };
   }
 
@@ -156,7 +219,7 @@ function repondre(dernier: string, contexte: string): ChatResult {
   if (nomCommerce) {
     return {
       reply: `Noté : « ${nomCommerce} » sera le nom affiché sur la carte.`,
-      toolCall: { name: "nom", arguments: { type: "nom", valeur: nomCommerce } },
+      toolCalls: [{ name: "nom", arguments: { type: "nom", valeur: nomCommerce } }],
     };
   }
 
@@ -167,10 +230,12 @@ function repondre(dernier: string, contexte: string): ChatResult {
     const libelleCourt = pourcent ? `-${pourcent[1]}%` : "Offert";
     return {
       reply: `Parfait. J'enregistre : ${texte}.`,
-      toolCall: {
-        name: "recompense",
-        arguments: { type: "recompense", recompense: { texte, libelleCourt } },
-      },
+      toolCalls: [
+        {
+          name: "recompense",
+          arguments: { type: "recompense", recompense: { texte, libelleCourt } },
+        },
+      ],
     };
   }
 
@@ -179,7 +244,7 @@ function repondre(dernier: string, contexte: string): ChatResult {
     const valeur = detecterNombre(n) ?? 10;
     return {
       reply: `Très bien : ${valeur} passages avant la récompense.`,
-      toolCall: { name: "objectif", arguments: { type: "objectif", valeur } },
+      toolCalls: [{ name: "objectif", arguments: { type: "objectif", valeur } }],
     };
   }
 
@@ -226,7 +291,7 @@ export function creerMockProvider(options: OptionsMock = {}): LLMProvider {
         compteurs.set(texte, n);
         return {
           reply: "Pardon, je corrige : objectif à 10.",
-          toolCall: { name: "objectif", arguments: { type: "objectif", valeur: 10 } },
+          toolCalls: [{ name: "objectif", arguments: { type: "objectif", valeur: 10 } }],
         };
       }
 
