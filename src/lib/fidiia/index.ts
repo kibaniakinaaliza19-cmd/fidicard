@@ -9,7 +9,7 @@
 
 import type { ChatResult, LLMProvider, Message } from "./provider/types.ts";
 import { getProvider } from "./provider/index.ts";
-import type { ConversationState, EtatBrut } from "./state/conversationState.ts";
+import type { AnalyseImage, ConversationState, EtatBrut } from "./state/conversationState.ts";
 import { creerEtat, majEtat } from "./state/conversationState.ts";
 import type { SessionMemory } from "./state/sessionMemory.ts";
 import { creerMemoire, leverVerrou, noterInformation } from "./state/sessionMemory.ts";
@@ -21,12 +21,22 @@ import {
   detecterLevees,
   detecterModificationCiblee,
 } from "./engine/actions.ts";
-import type { Action, Carte, Cible } from "./validation/schemas.ts";
+import type { Action, Carte, Cible, Design } from "./validation/schemas.ts";
 import { validerAction } from "./validation/schemas.ts";
 import { controlerCarte, motifsEchec, toutValide, type Verdict } from "./validation/quality.ts";
 import { suggestionPour, trouverSecteur } from "./corpus/index.ts";
 
 export const MAX_APPELS_PAR_MESSAGE = 2;
+
+/** Utilisé seulement quand ni le modèle ni le corpus n'ont de design à
+ *  proposer (secteur non reconnu) — le dernier filet, pas le premier. */
+const DESIGN_PAR_DEFAUT: Design = {
+  accent: "#e0492f",
+  fond: "#2a1a12",
+  texte: "#ffffff",
+  icone: "Gift",
+  ambiance: "chaud",
+};
 
 export interface Session {
   readonly provider: LLMProvider;
@@ -126,10 +136,15 @@ export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[
       { id: "code", nom: "Code-barres", type: "codebarres" as const },
     ],
     zonesFidelite: enTampons ? ["zone-fidelite"] : [],
-    // Amorce de design issue du corpus (accent + icône du secteur) — voir
-    // schemas.ts:DesignSchema. `undefined` en dehors du corpus : pas de
-    // secteur reconnu, pas d'accent inventé.
-    design: suggestion ? { accent: suggestion.accent, icone: suggestion.icone } : undefined,
+    // Le modèle décide s'il a transmis un design (action `design`, déjà
+    // validé et corrigé pour le contraste — voir engine/actions.ts). Sinon,
+    // et seulement sinon, le corpus comble : c'est le filet de sécurité
+    // annoncé, pas le chemin normal.
+    design:
+      etat.design ??
+      (suggestion
+        ? { accent: suggestion.accent, fond: DESIGN_PAR_DEFAUT.fond, texte: DESIGN_PAR_DEFAUT.texte, icone: suggestion.icone, ambiance: etat.ambiance ?? DESIGN_PAR_DEFAUT.ambiance }
+        : { ...DESIGN_PAR_DEFAUT, ambiance: etat.ambiance ?? DESIGN_PAR_DEFAUT.ambiance }),
     programme: {
       mode,
       objectif,
@@ -214,7 +229,27 @@ function journaliser(event: string, details: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ scope: "fidiia.envoyerMessage", event, at: new Date().toISOString(), ...details }));
 }
 
-export async function envoyerMessage(session: Session, texte: string): Promise<Reponse> {
+const PROMPT_VISION_IMAGE =
+  'Analyse ce logo ou cette photo de commerce. Réponds UNIQUEMENT avec un objet JSON : ' +
+  '{"couleurs":["#rrggbb", ...], "style":"<en quelques mots>", "ambiance":"<en quelques mots>", "gamme":"<niveau perçu>"}. ' +
+  "2 à 4 couleurs dominantes, en hexadécimal.";
+
+function analyseImageValide(brut: unknown): AnalyseImage | null {
+  if (!brut || typeof brut !== "object") return null;
+  const o = brut as Record<string, unknown>;
+  const couleurs = Array.isArray(o.couleurs)
+    ? o.couleurs.filter((c): c is string => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c)).slice(0, 4)
+    : [];
+  if (couleurs.length === 0) return null;
+  return {
+    couleurs,
+    style: typeof o.style === "string" ? o.style.slice(0, 120) : "",
+    ambiance: typeof o.ambiance === "string" ? o.ambiance.slice(0, 120) : "",
+    gamme: typeof o.gamme === "string" ? o.gamme.slice(0, 120) : "",
+  };
+}
+
+export async function envoyerMessage(session: Session, texte: string, image?: string): Promise<Reponse> {
   session.tours += 1;
   session.historique.push({ role: "user", content: texte });
 
@@ -226,6 +261,30 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
   for (const cible of detecterLevees(texte)) {
     const r = leverVerrou(session.memory, cible, true);
     if (r.ok) session.memory = r.memory;
+  }
+
+  // 2bis. Un logo ou une photo envoyé dans le chat s'analyse tout de suite,
+  // avant la décision : le modèle doit voir « couleurs de l'image » dans son
+  // prochain prompt, pas au tour d'après. Distinct de l'étape ANALYSE
+  // (photo d'une carte EXISTANTE, plus bas) : ici c'est une simple image de
+  // marque, pas un document à décoder champ par champ.
+  if (image) {
+    try {
+      const res = await session.provider.vision(image, PROMPT_VISION_IMAGE);
+      const analyse = analyseImageValide(res.data);
+      if (analyse) {
+        session.etat = majEtat(session.etat, {
+          analyseImage: analyse,
+          logo: session.etat.logo ?? "reçu",
+        });
+        session.memory = noterInformation(session.memory, "image", "analysée");
+        journaliser("image_analysee", { couleurs: analyse.couleurs.length });
+      } else {
+        journaliser("image_illisible");
+      }
+    } catch (err) {
+      journaliser("image_erreur", { reason: (err as Error).message?.slice(0, 200) });
+    }
   }
 
   const demandeModification = detecterModificationCiblee(texte).length > 0;
@@ -291,6 +350,14 @@ export async function envoyerMessage(session: Session, texte: string): Promise<R
       session.etat = r.etat;
       session.memory = r.memory;
       if (action.type === "proposer") session.carteProposee = true;
+      // Un design transmis APRÈS la création de la carte (le contrat n'autorise
+      // qu'une action par tour : il arrive rarement dans le même tour que le
+      // dernier champ requis) doit quand même se voir. On ne reconstruit pas
+      // toute la carte — seule la palette change, pas la structure — on
+      // remplace juste son design par celui que le modèle vient de transmettre.
+      if (action.type === "design" && session.carte) {
+        session.carte = { ...session.carte, design: r.etat.design };
+      }
       journaliser("action_appliquee", { type: action.type, effet: r.effet });
     } else {
       refus = { code: r.code, motif: r.motif };

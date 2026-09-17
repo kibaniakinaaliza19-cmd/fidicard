@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Mic, Paperclip, Wand2, RefreshCw } from "lucide-react";
+import { Send, Mic, Paperclip, Wand2, RefreshCw, X } from "lucide-react";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import OrbeIA from "@/components/aiDesigner/OrbeIA";
 import { useCardStore } from "@/store/cardStore";
@@ -76,6 +76,20 @@ const QUICK: { label: string; send?: string; open?: "import" }[] = [
   { label: "Salon premium", send: "Salon de coiffure haut de gamme" },
 ];
 
+/** Mêmes bornes que côté serveur (route.ts) : inutile de faire attendre un
+ *  aller-retour réseau au commerçant pour un fichier qui sera refusé. */
+const TYPES_IMAGE_ACCEPTES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_TAILLE_IMAGE_OCTETS = 8 * 1024 * 1024;
+
+function lireCommeDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AssistantChat({ onStep }: { onStep: (n: number) => void }) {
   const applyTemplate = useCardStore((s) => s.applyTemplate);
   const setConfig = useLoyaltyStore((s) => s.setConfig);
@@ -105,8 +119,12 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   // une vraie panne, à distinguer du repli local voulu (pas de clé du tout).
   const [aiDown, setAiDown] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Logo ou photo choisi mais pas encore envoyé : une data URL, prête à
+  // partir avec le prochain message. `null` tant que rien n'est sélectionné.
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Session `lib/fidiia` en cours, renvoyée à chaque requête. Une ref, pas un
   // state : elle ne pilote aucun rendu, elle ne fait que voyager.
   const fidiiaSession = useRef<FidiiaSession>(null);
@@ -253,13 +271,13 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
 
   // --- mode « vrai modèle » : le moteur `lib/fidiia` mène la conversation ---
 
-  async function runFidiia(userText: string) {
+  async function runFidiia(userText: string, image?: string) {
     setBusy(true);
     try {
       const r = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: userText, session: fidiiaSession.current }),
+        body: JSON.stringify({ message: userText, session: fidiiaSession.current, image }),
       });
       const data = await r.json();
       if (!r.ok) {
@@ -329,10 +347,31 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     runFidiia(text);
   }
 
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!TYPES_IMAGE_ACCEPTES.includes(file.type)) {
+      pushToast("Format non pris en charge — utilisez un JPEG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > MAX_TAILLE_IMAGE_OCTETS) {
+      pushToast("Image trop lourde (8 Mo maximum).");
+      return;
+    }
+    try {
+      setPendingImage(await lireCommeDataUrl(file));
+    } catch {
+      pushToast("Impossible de lire cette image.");
+    }
+  }
+
   async function submit(raw?: string) {
     const text = (raw ?? input).trim();
     if (!text || busy) return;
     setInput("");
+    const image = pendingImage ?? undefined;
+    setPendingImage(null);
     add({ role: "user", text });
     // « je veux des points » doit être entendu dans les deux régimes
     // (vrai modèle ou repli local), et à n'importe quel moment.
@@ -355,7 +394,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     }
 
     if (vivant) {
-      runFidiia(text);
+      runFidiia(text, image);
       return;
     }
     if (phase === "activity") handleActivity(text);
@@ -631,8 +670,34 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         ))}
       </div>
 
+      {pendingImage && (
+        <div className="flex items-center gap-2 px-3 pb-1">
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: "var(--border)" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={pendingImage} alt="Logo à envoyer" className="h-full w-full object-cover" />
+            <button
+              onClick={() => setPendingImage(null)}
+              className="absolute -right-1 -top-1 flex h-4 w-4 cursor-pointer items-center justify-center rounded-full text-white"
+              style={{ background: "var(--danger)" }}
+              title="Retirer"
+            >
+              <X size={10} />
+            </button>
+          </div>
+          <span className="text-[11px]" style={{ color: "var(--text-dim)" }}>
+            Prêt à envoyer avec votre prochain message.
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-2 px-3 py-3">
-        <button onClick={() => setImportCardOpen(true)} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Joindre / importer">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={TYPES_IMAGE_ACCEPTES.join(",")}
+          onChange={onPickImage}
+          className="hidden"
+        />
+        <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Envoyer un logo ou une photo">
           <Paperclip size={18} />
         </button>
         <input

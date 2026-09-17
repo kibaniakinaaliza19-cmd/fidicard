@@ -66,13 +66,27 @@ function texte(nom: string, contenu: string, z: number, o: Partial<TextLayer> = 
  * le voie.
  */
 export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
+  // Le design vient du modèle (action `design`) quand il l'a transmis, sinon
+  // du corpus, sinon des valeurs par défaut — `construireCarte` (fidiia/index.ts)
+  // a déjà tranché : à ce stade, `carte.design` porte toujours une palette
+  // complète et un couple fond/texte déjà vérifié pour le contraste.
+  const design = carte.design;
+  const accent = design?.accent;
+  const fond = design?.fond ?? "#2a1a12";
+  const texteCouleur = design?.texte ?? "#ffffff";
+  // Textes secondaires : la même couleur que le titre, légèrement rapprochée
+  // du fond — jamais une teinte inventée, un mélange entre deux couleurs déjà
+  // vérifiées lisibles ensemble reste lisible.
+  const texteAttenue = melanger(texteCouleur, fond, 0.15);
+  const texteDiscret = melanger(texteCouleur, fond, 0.25);
+
   const layers: Layer[] = [
-    texte("Nom du commerce", carte.nomCommerce, 1, { y: 10, fontSize: 18 }),
+    texte("Nom du commerce", carte.nomCommerce, 1, { y: 10, fontSize: 18, color: texteCouleur }),
     texte("Règle du programme", regleLisible(carte), 2, {
       y: 24,
       fontSize: 9,
       fontWeight: 400,
-      color: "#e8e8e8",
+      color: texteAttenue,
     }),
     texte("Instruction de scan", "PRÉSENTEZ CE CODE EN CAISSE POUR SCANNER VOTRE CARTE", 3, {
       y: 74,
@@ -82,7 +96,7 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
       fontWeight: 600,
       align: "center",
       letterSpacing: 0.4,
-      color: "#f5f5f5",
+      color: texteDiscret,
     }),
   ];
 
@@ -143,13 +157,10 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
       ? [createDefaultStampGridZone(id("zone"), carte.programme.objectif)]
       : [];
 
-  // Accent du corpus : sans lui, le fond neutre par défaut ne varie jamais,
-  // quel que soit le secteur (c'était tout le défaut). Avec lui, seuls les
-  // tampons et le liseré du dégradé en portent la trace — le fond reste sombre
-  // et lisible, il ne devient pas la couleur d'accent elle-même.
-  const accent = carte.design?.accent;
+  // Accent (du modèle ou du corpus) : porté par les tampons et le liseré du
+  // dégradé, jamais par le fond lui-même — le fond, c'est `design.fond`.
   if (accent && zones[0]) {
-    zones[0].icon = carte.design?.icone;
+    zones[0].icon = design?.icone;
     zones[0].iconColor = accent;
     zones[0].styleOverride = { filled: accent, border: accent };
   }
@@ -161,11 +172,11 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
     background: {
       kind: "gradient",
       color: "#1a1a1a",
-      gradientFrom: accent ? assombrir(accent, 0.14) : "#2a1a12",
-      gradientTo: "#120d0a",
+      gradientFrom: fond,
+      gradientTo: assombrir(fond, 0.55),
       gradientAngle: 135,
       pattern: "dots",
-      patternColor: "#ffffff",
+      patternColor: texteCouleur,
       image: null,
       imageDim: 0,
     },
@@ -190,12 +201,30 @@ export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<Loyal
   return { doc, config };
 }
 
-/** Ramène une couleur d'accent vive à une teinte de fond sombre et lisible. */
+/** Ramène une couleur vive à une teinte plus sombre — sert à creuser le
+ *  dégradé de fond à partir de sa propre couleur, sans en inventer une autre. */
 function assombrir(hex: string, facteur: number): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   if (!m) return "#2a1a12";
   const [r, g, b] = [m[1], m[2], m[3]].map((c) => Math.round(parseInt(c, 16) * facteur));
   return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Mélange deux couleurs déjà vérifiées lisibles ensemble (texte/fond) : le
+ * résultat reste dans l'intervalle de contraste validé par `nettoyerContraste`,
+ * ce n'est jamais une teinte inventée pour l'occasion.
+ */
+function melanger(hexA: string, hexB: string, versB: number): string {
+  const a = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hexA);
+  const b = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hexB);
+  if (!a || !b) return hexA;
+  const canaux = [0, 1, 2].map((i) => {
+    const ca = parseInt(a[i + 1], 16);
+    const cb = parseInt(b[i + 1], 16);
+    return Math.round(ca + (cb - ca) * versB);
+  });
+  return `#${canaux.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function regleLisible(carte: Carte): string {

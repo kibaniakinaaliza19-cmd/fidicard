@@ -181,6 +181,43 @@ export function photoIntegree(c: Carte, photoFournie: boolean): Verdict {
     : ko("photo-integree", "une photo a été fournie mais n'apparaît pas sur la carte");
 }
 
+/* ------------------------------------------------------------- contraste */
+
+function versRGB(hex: string): [number, number, number] {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return [0, 0, 0];
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+}
+
+function luminance([r, g, b]: [number, number, number]): number {
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+/** Or ou jaune clair : lumineux, rouge et vert élevés et proches, bleu net­tement en retrait. */
+function estOrOuJauneClair(hex: string): boolean {
+  const [r, g, b] = versRGB(hex);
+  return luminance([r, g, b]) > 0.55 && r > 140 && g > 110 && r - b > 60 && Math.abs(r - g) < 70;
+}
+
+function estProcheDuBlanc(hex: string): boolean {
+  return luminance(versRGB(hex)) > 0.85;
+}
+
+/** Anthracite chaud, utilisé partout ailleurs dans l'app pour du texte sur
+ *  fond clair — pas une nouvelle teinte inventée pour l'occasion. */
+const ANTHRACITE = "#241812";
+
+/**
+ * Règle absolue du projet : jamais de texte blanc sur un fond or ou jaune
+ * clair. Corrige, ne rejette pas — voir engine/actions.ts, cas `design`.
+ */
+export function nettoyerContraste(fond: string, texte: string): { texte: string; corrige: boolean } {
+  if (estOrOuJauneClair(fond) && estProcheDuBlanc(texte)) {
+    return { texte: ANTHRACITE, corrige: true };
+  }
+  return { texte, corrige: false };
+}
+
 /** Exécute tous les contrôles. L'ordre n'a pas d'importance : ils sont purs. */
 export function controlerCarte(
   c: Carte,

@@ -4,9 +4,18 @@
 // seule. Impossible de le forcer à la main, donc impossible de créer une carte
 // sans les cinq informations minimales du contrat de sortie.
 
-import type { ModeFidelite, Palier, Recompense } from "../validation/schemas.ts";
+import type { Ambiance, Design, ModeFidelite, Palier, Recompense } from "../validation/schemas.ts";
 
 export type NiveauStyle = "connu" | "partiel" | "inconnu";
+
+/** Ce que `provider.vision()` a extrait d'un logo ou d'une photo envoyée
+ *  dans la conversation — distinct de l'ANALYSE d'une carte existante. */
+export interface AnalyseImage {
+  couleurs: string[];
+  style: string;
+  ambiance: string;
+  gamme: string;
+}
 
 /** Champs réellement stockés. Tout est optionnel : on part de rien. */
 export interface EtatBrut {
@@ -22,6 +31,14 @@ export interface EtatBrut {
   paliers?: Palier[];
   recompense?: Recompense;
   style?: NiveauStyle;
+  /** Choisie via l'action `proposer`. Suivie ici (pas seulement en mémoire)
+   *  pour que le modèle sache qu'il l'a déjà demandée — voir resumerEtat. */
+  ambiance?: Ambiance;
+  /** Résultat d'une analyse d'image envoyée en cours de conversation. */
+  analyseImage?: AnalyseImage;
+  /** Design transmis par le modèle (action `design`). Absent : le corpus
+   *  décide seul, voir construireCarte(). */
+  design?: Design;
 }
 
 export interface ConversationState extends EtatBrut {

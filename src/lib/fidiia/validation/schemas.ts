@@ -5,11 +5,26 @@
 // devinant l'intention — elle est rejetée avec un motif.
 
 import { z } from "zod";
+import { STAMP_CATALOG_DATA } from "../../../data/stampCatalog.generated.ts";
 
 /* ------------------------------------------------------------- primitives */
 
 export const AmbianceSchema = z.enum(["chaud", "neutre", "froid"]);
 export type Ambiance = z.infer<typeof AmbianceSchema>;
+
+/** Couleur hexadécimale à 6 chiffres. Rien d'autre n'est une couleur valide ici. */
+export const CouleurHexSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "couleur hexadécimale attendue (#rrggbb)");
+
+/**
+ * Le vrai catalogue de tampons (777 icônes lucide, voir
+ * src/data/stampCatalog.generated.ts), pas une liste inventée pour
+ * l'occasion. Une icône hors de cet ensemble n'existe pas dans l'éditeur :
+ * elle ne s'afficherait pas.
+ */
+const ICONES_CATALOGUE = new Set(STAMP_CATALOG_DATA.map((i) => i.lucide));
+export function iconeConnue(valeur: string): boolean {
+  return ICONES_CATALOGUE.has(valeur);
+}
 
 export const ModeFideliteSchema = z.enum(["stamps", "points"]);
 export type ModeFidelite = z.infer<typeof ModeFideliteSchema>;
@@ -80,9 +95,37 @@ export const RecompenseSchema = z.object({
 });
 export type Recompense = z.infer<typeof RecompenseSchema>;
 
-/* ---------------------------------------------------------- les 7 actions */
+/**
+ * Design d'une carte : palette, icône de tampon, ambiance. Rempli soit par
+ * le modèle (action `design`), soit par le corpus quand le modèle ne
+ * transmet rien — jamais les deux en même temps, voir fidiia/index.ts.
+ *
+ * Volontairement strict sur la forme (couleur hexadécimale, icône du vrai
+ * catalogue) : une valeur malformée fait échouer TOUTE l'action `design`,
+ * exactement comme les sept autres actions. Le modèle reçoit le motif
+ * exact, se corrige à la relance, et si la relance échoue aussi,
+ * `construireCarte` retombe sur le corpus — sans code de repli séparé à
+ * écrire ni à tester en double : c'est le même chemin que toute sortie
+ * invalide.
+ */
+export const DesignSchema = z.object({
+  accent: CouleurHexSchema,
+  fond: CouleurHexSchema,
+  texte: CouleurHexSchema,
+  icone: z.string().min(1).max(NOM_MAX).refine(iconeConnue, {
+    message: "icône absente du catalogue (777 icônes disponibles, voir stampCatalog)",
+  }),
+  ambiance: AmbianceSchema,
+});
+export type Design = z.infer<typeof DesignSchema>;
+
+/* ---------------------------------------------------------- les 8 actions */
 
 export const ActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("design"),
+    ...DesignSchema.shape,
+  }),
   z.object({
     type: z.literal("proposer"),
     secteur: z.string().min(2).max(NOM_MAX),
@@ -121,6 +164,7 @@ export type Action = z.infer<typeof ActionSchema>;
 
 /** Noms d'outils exposés au modèle. Un nom hors de cette liste est ignoré. */
 export const NOMS_ACTIONS = [
+  "design",
   "proposer",
   "nom",
   "mode",
@@ -172,19 +216,6 @@ export type Programme = z.infer<typeof ProgrammeSchema>;
  * l'application : le moteur décrit, l'adaptateur convertit. Cette séparation
  * garde `lib/fidiia` testable sans rien charger de l'interface.
  */
-/**
- * Amorce de design, alimentée aujourd'hui par le corpus (une couleur
- * d'accent et une icône par secteur), jamais par le modèle : le contrat de
- * sortie ne lui demande encore aucune valeur visuelle. Champ optionnel et
- * séparé du reste exprès, pour que le jour où le contrat s'étend, il n'y ait
- * qu'un émetteur de plus à brancher ici — pas de nouveau champ à inventer.
- */
-export const DesignSchema = z.object({
-  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  icone: z.string().min(1).max(NOM_MAX).optional(),
-});
-export type Design = z.infer<typeof DesignSchema>;
-
 export const CarteSchema = z.object({
   nomCommerce: z.string().min(1).max(NOM_MAX),
   calques: z.array(CalqueSchema),

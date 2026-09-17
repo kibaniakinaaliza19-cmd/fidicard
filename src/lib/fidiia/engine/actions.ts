@@ -7,6 +7,7 @@
 
 import type { Action, Cible } from "../validation/schemas.ts";
 import { bornesObjectif, CibleSchema } from "../validation/schemas.ts";
+import { nettoyerContraste } from "../validation/quality.ts";
 import type { ConversationState } from "../state/conversationState.ts";
 import { majEtat } from "../state/conversationState.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
@@ -28,8 +29,27 @@ export function appliquerAction(
   memory: SessionMemory,
 ): ResultatAction {
   switch (action.type) {
+    case "design": {
+      // Le contraste se corrige, il ne se rejette pas : voir quality.ts. Les
+      // deux autres contraintes (icône du catalogue, couleur bien formée)
+      // sont déjà tranchées par le schéma — une valeur qui arrive ici est
+      // déjà propre sur ces deux points.
+      const { texte, corrige } = nettoyerContraste(action.fond, action.texte);
+      const design = { accent: action.accent, fond: action.fond, texte, icone: action.icone, ambiance: action.ambiance };
+      const e = majEtat(etat, { design, ambiance: action.ambiance });
+      const m = noterDecision(memory, "design", { ...design, contrasteCorrige: corrige });
+      return {
+        ok: true,
+        etat: e,
+        memory: m,
+        effet: corrige
+          ? `design appliqué (texte réajusté pour le contraste : ${texte})`
+          : "design appliqué",
+      };
+    }
+
     case "proposer": {
-      const e = majEtat(etat, { secteur: action.secteur });
+      const e = majEtat(etat, { secteur: action.secteur, ambiance: action.ambiance });
       const m = noterPreference(noterDecision(memory, "ambiance", action.ambiance), `ambiance ${action.ambiance}`);
       return { ok: true, etat: e, memory: m, effet: `trois propositions ${action.secteur} / ${action.ambiance}` };
     }

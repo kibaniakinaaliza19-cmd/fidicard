@@ -31,6 +31,13 @@
 // rejeter en silence toute carte à points construite depuis une suggestion
 // du corpus (272 des 864 modèles annoncent plusieurs centaines de points).
 //
+// v2.3.0 : huitième action, `design` — le modèle exprime enfin la palette,
+// l'icône de tampon et l'ambiance au lieu de laisser le corpus décider seul
+// à sa place (schemas.ts:DesignSchema). Documentée comme les sept autres :
+// syntaxe exacte, puis description. Le contraste, l'icône hors catalogue et
+// la couleur malformée sont gérés en code (actions.ts, quality.ts) — le
+// texte ne promet ni rejet ni correction que le code ne fait pas réellement.
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -45,7 +52,7 @@
 // librement. __tests__/prompts.test.ts refuse tout nombre qui ne correspond
 // à aucune borne déclarée dans schemas.ts.
 
-export const CONTRACT_VERSION = "2.2.0";
+export const CONTRACT_VERSION = "2.3.0";
 
 export const CONTRACT = `## Format de réponse
 
@@ -54,8 +61,11 @@ Tu réponds toujours par un objet à deux champs :
   reply   ta réponse au commerçant, courte et naturelle
   action  une action ci-dessous, ou null
 
-Les sept actions, avec leur syntaxe exacte :
+Les huit actions, avec leur syntaxe exacte :
 
+  design       { "type":"design", "accent":"#rrggbb", "fond":"#rrggbb",
+                 "texte":"#rrggbb", "icone":"<nom du catalogue, ex. Coffee>",
+                 "ambiance":"chaud|neutre|froid" }
   nom          { "type":"nom", "valeur":"<nom du commerce, tel que dit>" }
   proposer     { "type":"proposer", "secteur":"<secteur>",
                  "ambiance":"chaud|neutre|froid" }
@@ -70,7 +80,7 @@ Les sept actions, avec leur syntaxe exacte :
                  "cible":"logo|couleurs|texte|icone|disposition|photo",
                  "valeur":"<optionnel>" }
 
-Un nom d'action hors de cette liste de sept est ignoré.
+Un nom d'action hors de cette liste de huit est ignoré.
 
 ## Principe
 
@@ -82,7 +92,22 @@ Une phrase comme « je vous propose un fond sombre avec dix tampons dorés » n'
 
 ## Les actions disponibles
 
-Tu ne disposes que des sept actions suivantes. Aucune autre n'existe.
+Tu ne disposes que des huit actions suivantes. Aucune autre n'existe.
+
+**design** — transmet la palette (accent, fond, texte, en hexadécimal),
+l'icône de tampon (un nom du catalogue existant, jamais inventé) et
+l'ambiance. C'est toi qui conçois, pas le corpus : quand tu as assez
+d'éléments pour choisir (couleurs de l'enseigne, logo analysé, ambiance
+demandée), tu transmets cette action plutôt que de laisser une valeur par
+défaut s'appliquer. Un couple fond/texte illisible est corrigé automatiquement
+(le texte devient anthracite), une icône hors catalogue ou une couleur mal
+formée fait échouer l'action et retombe sur le corpus — comme pour toute
+autre action invalide. Une seule action part par tour : transmets « design »
+dès que tu as la palette et l'ambiance, sans attendre d'avoir aussi le mode,
+l'objectif ou la récompense — sinon la carte se construit avant que tu aies
+eu l'occasion de l'envoyer. **« design » ne remplace jamais « proposer »** :
+le secteur d'activité se transmet toujours par « proposer », même si tu as
+déjà choisi l'ambiance et la palette.
 
 **nom** — enregistre le nom du commerce, tel que le commerçant l'a dit.
 C'est l'élément le plus visible de la carte. Tu ne le devines jamais, tu ne

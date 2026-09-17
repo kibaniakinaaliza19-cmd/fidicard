@@ -87,10 +87,34 @@ interface SessionBlob {
 interface PostBody {
   message: string;
   session?: SessionBlob;
+  /** Logo ou photo envoyé dans le chat — data URL déjà vérifiée (taille, type). */
+  image?: string;
 }
 
 const MAX_HISTORIQUE = 60;
 const MAX_CARACTERES = 4000;
+/** 8 Mo décodés, comme partout ailleurs dans l'app (voir ImportCardModal). */
+const MAX_TAILLE_IMAGE_BASE64 = 11 * 1024 * 1024;
+const TYPES_IMAGE_ACCEPTES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * Une image mal formée, trop lourde ou d'un type non accepté n'annule pas le
+ * message : elle est simplement ignorée, et le motif part dans le journal.
+ * Le commerçant garde sa conversation, il retente l'envoi s'il le souhaite.
+ */
+function normaliserImage(v: unknown): string | undefined {
+  if (typeof v !== "string" || !v) return undefined;
+  const m = /^data:([a-z0-9+.-]+\/[a-z0-9+.-]+);base64,/i.exec(v);
+  if (!m || !TYPES_IMAGE_ACCEPTES.includes(m[1].toLowerCase())) {
+    console.log(JSON.stringify({ scope: "assistant.image", event: "type_refuse", type: m?.[1] ?? "inconnu", at: new Date().toISOString() }));
+    return undefined;
+  }
+  if (v.length > MAX_TAILLE_IMAGE_BASE64) {
+    console.log(JSON.stringify({ scope: "assistant.image", event: "taille_refusee", octets: v.length, at: new Date().toISOString() }));
+    return undefined;
+  }
+  return v;
+}
 
 /** Coerce en texte exploitable, ou chaîne vide. Jamais d'exception. */
 function normaliserTexte(v: unknown): string {
@@ -145,7 +169,10 @@ function validerCorps(brut: unknown): ValidationCorps {
   const o = brut && typeof brut === "object" ? (brut as Record<string, unknown>) : {};
   const message = normaliserTexte(o.message);
   if (!message) return { ok: false, motif: "aucun texte exploitable dans le message" };
-  return { ok: true, valeur: { message, session: normaliserSession(o.session) } };
+  return {
+    ok: true,
+    valeur: { message, session: normaliserSession(o.session), image: normaliserImage(o.image) },
+  };
 }
 
 /** Extrait le code HTTP OpenAI embarqué dans le message d'erreur du provider. */
@@ -185,7 +212,7 @@ export async function POST(req: Request) {
 
   let resultat;
   try {
-    resultat = await envoyerMessage(session, corps.message);
+    resultat = await envoyerMessage(session, corps.message, corps.image);
   } catch (err) {
     const statut = statutDepuisErreur(err);
     if (statut === 401) return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });

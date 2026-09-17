@@ -31,6 +31,17 @@ function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
   if (etat.objectif !== undefined) connu.push(`objectif : ${etat.objectif}`);
   if (etat.recompense) connu.push(`récompense : ${etat.recompense.texte}`);
   if (etat.logo) connu.push("logo : fourni");
+  if (etat.ambiance) connu.push(`ambiance : ${etat.ambiance}`);
+  if (etat.analyseImage) {
+    const a = etat.analyseImage;
+    connu.push(
+      `image analysée — couleurs : ${a.couleurs.join(", ")}` +
+        (a.style ? `, style : ${a.style}` : "") +
+        (a.ambiance ? `, ambiance perçue : ${a.ambiance}` : "") +
+        (a.gamme ? `, gamme : ${a.gamme}` : ""),
+    );
+  }
+  if (etat.design) connu.push("design déjà transmis — le rappeler seulement si le commerçant en redemande un autre");
   if (etat.carteExistante) {
     connu.push(etat.carteAnalysee ? "carte existante : analysée" : "carte existante : à analyser");
   }
