@@ -81,6 +81,21 @@ const QUICK: { label: string; send?: string; open?: "import" }[] = [
 const TYPES_IMAGE_ACCEPTES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_TAILLE_IMAGE_OCTETS = 8 * 1024 * 1024;
 
+/**
+ * FidiIA décide où et à quelle taille placer le logo (calque nommé "Logo",
+ * voir adapters/toCardDoc.ts) mais n'a jamais le fichier réel — seulement son
+ * analyse de couleurs. Ce fichier existe côté client (l'upload l'a lu en data
+ * URL) : c'est lui qui referme la boucle, sans repasser par le serveur.
+ */
+function integrerLogoReel(doc: CardDoc, logo: string): CardDoc {
+  const aUnCalqueLogo = doc.layers.some((l) => l.type === "image" && l.name === "Logo");
+  if (!aUnCalqueLogo) return doc;
+  return {
+    ...doc,
+    layers: doc.layers.map((l) => (l.type === "image" && l.name === "Logo" ? { ...l, src: logo } : l)),
+  };
+}
+
 function lireCommeDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -132,6 +147,12 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   // Session `lib/fidiia` en cours, renvoyée à chaque requête. Une ref, pas un
   // state : elle ne pilote aucun rendu, elle ne fait que voyager.
   const fidiiaSession = useRef<FidiiaSession>(null);
+  // Dernier logo envoyé, gardé côté client. Le serveur ne connaît le logo que
+  // le temps d'un appel vision (couleurs/style) : il ne le stocke nulle part,
+  // renvoyer l'image à chaque tour alourdirait chaque requête FidiIA de
+  // plusieurs Mo pour rien. FidiIA décide où et à quelle taille le placer
+  // (calque "Logo") ; c'est le client qui y met l'image réelle.
+  const dernierLogo = useRef<string | null>(null);
   // La promesse de la sonde, gardée telle quelle — pas seulement son
   // résultat dans `aiLive`. `aiLive` vaut `null` tant qu'elle n'a pas
   // répondu, et `null` est faux : un message envoyé pendant ce laps
@@ -277,6 +298,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   // --- mode « vrai modèle » : le moteur `lib/fidiia` mène la conversation ---
 
   async function runFidiia(userText: string, image?: string) {
+    if (image) dernierLogo.current = image;
     setBusy(true);
     try {
       const r = await fetch("/api/assistant", {
@@ -303,9 +325,12 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       // La carte conçue par FidiIA remplace celle de l'éditeur dès qu'elle
       // existe : le moteur ne propose pas un choix, il livre une carte prête.
       if (data.carte) {
-        applyTemplate(data.carte as CardDoc);
+        const carte = dernierLogo.current
+          ? integrerLogoReel(data.carte as CardDoc, dernierLogo.current)
+          : (data.carte as CardDoc);
+        applyTemplate(carte);
         if (data.config) setConfig(data.config as Partial<LoyaltyConfig>);
-        add({ role: "assistant", text: data.reply, cardApplied: data.carte as CardDoc });
+        add({ role: "assistant", text: data.reply, cardApplied: carte });
         setPhase("done");
         onStep(3);
       } else if (data.reply) {

@@ -16,7 +16,16 @@ import { estVerrouille, noterDecision, noterPreference, poserVerrou } from "../s
 export type CodeRefus = "VERROU" | "INVALIDE" | "INCONNU";
 
 export type ResultatAction =
-  | { ok: true; etat: ConversationState; memory: SessionMemory; effet: string }
+  | {
+      ok: true;
+      etat: ConversationState;
+      memory: SessionMemory;
+      effet: string;
+      /** Phrase à montrer au commerçant quand une correction automatique a
+       *  changé ce qu'Astra avait transmis — jamais silencieuse, voir
+       *  fidiia/index.ts. Absent quand rien n'a été corrigé. */
+      noteCommercante?: string;
+    }
   | { ok: false; code: CodeRefus; motif: string };
 
 /**
@@ -45,6 +54,7 @@ export function appliquerAction(
         effet: corrige
           ? `design appliqué (texte réajusté pour le contraste : ${texte})`
           : "design appliqué",
+        noteCommercante: corrige ? "J'ai ajusté la couleur du texte pour qu'il reste lisible." : undefined,
       };
     }
 
@@ -76,6 +86,9 @@ export function appliquerAction(
         etat: e,
         memory: m,
         effet: corrections.length ? `composition appliquée (${corrections.join(", ")})` : "composition appliquée",
+        noteCommercante: corrections.length
+          ? "J'ai fait quelques ajustements automatiques pour que tout reste lisible et dans le cadre."
+          : undefined,
       };
     }
 

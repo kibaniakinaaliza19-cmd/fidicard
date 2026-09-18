@@ -388,6 +388,10 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
   // acquises (chacune est indépendante), mais on ne continue pas d'appliquer
   // une suite dont le motif de refus a changé le contexte.
   const appliquees: Action[] = [];
+  // Une correction automatique (contraste, recadrage) ne doit jamais rester
+  // silencieuse pour le commerçant — seulement dans les logs. Voir
+  // engine/actions.ts:ResultatAction.noteCommercante.
+  const notesCorrections: string[] = [];
   for (const action of actions) {
     const r = appliquerAction(action, session.etat, session.memory);
     if (r.ok) {
@@ -395,6 +399,7 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
       session.memory = r.memory;
       appliquees.push(action);
       if (action.type === "proposer") session.carteProposee = true;
+      if (r.noteCommercante) notesCorrections.push(r.noteCommercante);
       journaliser("action_appliquee", { type: action.type, effet: r.effet });
     } else {
       refus = { code: r.code, motif: r.motif };
@@ -466,6 +471,13 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
         reply = `Votre carte est prête : ${carte.programme.objectif} ${
           carte.programme.mode === "points" ? "points" : "passages"
         }, ${carte.programme.recompense.texte.toLowerCase()}. Dites-moi ce que vous voulez ajuster.`;
+        // Le corpus ne doit jamais se substituer en silence au modèle pour le
+        // visuel : si ni `design` ni `composer` n'ont été transmis, la palette
+        // vient du corpus ou du défaut générique (construireCarte) — le
+        // commerçant doit le savoir, pas croire que c'est un choix d'Astra.
+        if (session.etat.design === undefined && session.etat.composition === undefined) {
+          reply += " J'ai choisi une palette générique en attendant vos préférences — dites-moi vos couleurs ou votre logo pour que je personnalise le design.";
+        }
       }
     } else {
       // Même le repli générique a échoué : ça n'arrive dans aucun test
@@ -480,6 +492,12 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
     verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
     if (toutValide(verdicts)) session.carte = carte;
     else refus = { code: "VERROU", motif: motifsEchec(verdicts).join(" ; ") };
+  }
+
+  // Une correction automatique se voit dans la conversation, pas seulement
+  // dans les logs serveur — voir engine/actions.ts:noteCommercante.
+  if (notesCorrections.length && !refus) {
+    reply = `${reply} ${notesCorrections.join(" ")}`.trim();
   }
 
   // Un verrou posé se confirme toujours au commerçant : une interdiction
