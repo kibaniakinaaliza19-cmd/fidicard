@@ -114,6 +114,10 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [input, setInput] = useState("");
   // null = pas encore su ; true = vrai modèle branché ; false = repli local
   const [aiLive, setAiLive] = useState<boolean | null>(null);
+  // Nom du modèle réellement configuré côté serveur (ex. "gpt-6-astra"),
+  // affiché tel quel : la preuve que la carte vient de ce modèle, pas d'un
+  // catalogue local, doit être visible sans avoir à lire les logs serveur.
+  const [aiModel, setAiModel] = useState<string | null>(null);
   // true seulement quand une clé est configurée côté serveur mais que
   // l'appel de contrôle échoue quand même (clé révoquée, modèle retiré...) :
   // une vraie panne, à distinguer du repli local voulu (pas de clé du tout).
@@ -157,6 +161,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       .then((d) => {
         const vivant = Boolean(d.available);
         setAiLive(vivant);
+        setAiModel(typeof d.model === "string" ? d.model : null);
         if (d.configured && !d.available) {
           setAiDown(true);
           setMessages((prev) => [
@@ -218,12 +223,12 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     if (!sector) return;
     add({ role: "user", text: t.label });
     setTone(t.id);
-    generate(sector, t.id, "Voici 3 propositions générées pour votre activité 👇 Cliquez-en une pour l'appliquer.");
+    generate(sector, t.id, "Mode démo — voici 3 exemples de notre catalogue pour votre activité 👇 Cliquez-en un pour l'appliquer.");
   }
 
   function regenerate() {
     if (!sector || !tone) return;
-    generate(sector, tone, "Voici d'autres versions 👇");
+    generate(sector, tone, "Mode démo — d'autres exemples du catalogue 👇");
   }
 
   function modifyWithAi() {
@@ -478,9 +483,9 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         >
           <span
             className="h-1.5 w-1.5 rounded-full"
-            style={{ background: aiDown ? "var(--danger)" : "var(--success)" }}
+            style={{ background: aiDown ? "var(--danger)" : aiLive ? "var(--success)" : "var(--warning, #b8860b)" }}
           />
-          {aiDown ? "IA indisponible" : aiLive ? "En ligne" : "Mode démo"}
+          {aiDown ? "IA indisponible" : aiLive ? `En ligne · ${aiModel ?? "modèle"}` : "Mode démo — catalogue local"}
         </span>
       </div>
 
@@ -578,6 +583,13 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
 
               {m.proposals && (
                 <>
+                  <p
+                    className="mt-1.5 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide"
+                    style={{ color: "var(--warning, #b8860b)" }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+                    Catalogue local — mode démo, aucun appel IA
+                  </p>
                   <div className="mt-2.5 grid grid-cols-3 gap-2">
                     {m.proposals.map((p) => (
                       <button
@@ -599,7 +611,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
                       className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] font-medium transition-colors hover:border-[var(--accent-1)] hover:text-[var(--accent-1)]"
                       style={{ borderColor: "var(--border-strong)", color: "var(--text-dim)" }}
                     >
-                      <RefreshCw size={12} /> Générer d&apos;autres versions
+                      <RefreshCw size={12} /> Voir d&apos;autres exemples
                     </button>
                     <button
                       onClick={modifyWithAi}
@@ -614,6 +626,10 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
 
               {m.cardApplied && (
                 <div className="mt-2.5">
+                  <p className="mb-1 flex items-center gap-1 text-[10px] font-medium" style={{ color: "var(--success)" }}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+                    Conçue par FidiIA{aiModel ? ` · ${aiModel}` : ""}
+                  </p>
                   <div className="w-[140px] overflow-hidden rounded-xl border" style={{ borderColor: "var(--border)" }}>
                     <MiniCard doc={m.cardApplied} width={140} preview />
                   </div>
