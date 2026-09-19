@@ -327,7 +327,48 @@ export const CompositionSchema = z.object({
 });
 export type Composition = z.infer<typeof CompositionSchema>;
 
-/* ---------------------------------------------------------- les 9 actions */
+/* -------------------------------------------------------------- habillage */
+//
+// Le moteur de calques (ci-dessus) est plafonné par ce que le rendu HTML sait
+// dessiner : 8 polices web, des icônes au trait, des aplats. Les cartes de
+// référence du projet sont d'une autre nature — photo fondue dans le fond,
+// coups de pinceau texturés, typographie display patinée, script manuscrit,
+// illustration de marque. Aucune de ces qualités n'est atteignable en
+// composant des <div>.
+//
+// L'habillage comble exactement cet écart : un modèle d'image produit le
+// DÉCOR de la carte, et seulement le décor. Les deux éléments qui doivent
+// rester vrais — la grille de tampons (elle reflète les passages réels du
+// client) et le code-barres (il doit se scanner) — restent déterministes et
+// se superposent par-dessus, dans les zones que le modèle déclare ici avoir
+// laissées vides.
+
+/** Longueur maximale d'un prompt d'habillage. Large : c'est une description
+ *  de direction artistique complète, pas une phrase. */
+export const PROMPT_HABILLAGE_MAX = 4000;
+export const PROMPT_HABILLAGE_MIN = 120;
+
+/** Rectangle en % du canvas, laissé vide par l'habillage pour recevoir un
+ *  élément fonctionnel. */
+export const ZoneReserveeSchema = z.object({
+  x: PctSchema,
+  y: PctSchema,
+  largeur: PctSchema,
+  hauteur: PctSchema,
+});
+export type ZoneReservee = z.infer<typeof ZoneReserveeSchema>;
+
+export const HabillageSchema = z.object({
+  /** Description de la carte à peindre, SANS tampons ni code-barres. */
+  prompt: z.string().min(PROMPT_HABILLAGE_MIN).max(PROMPT_HABILLAGE_MAX),
+  /** Où la grille de tampons sera posée — doit rester vide dans l'habillage. */
+  zoneTampons: ZoneReserveeSchema,
+  /** Où le code-barres sera posé — doit rester vide dans l'habillage. */
+  zoneCode: ZoneReserveeSchema,
+});
+export type Habillage = z.infer<typeof HabillageSchema>;
+
+/* --------------------------------------------------------- les 10 actions */
 
 export const ActionSchema = z.discriminatedUnion("type", [
   z.object({
@@ -371,6 +412,10 @@ export const ActionSchema = z.discriminatedUnion("type", [
     type: z.literal("composer"),
     ...CompositionSchema.shape,
   }),
+  z.object({
+    type: z.literal("habillage"),
+    ...HabillageSchema.shape,
+  }),
 ]);
 export type Action = z.infer<typeof ActionSchema>;
 
@@ -385,6 +430,7 @@ export const NOMS_ACTIONS = [
   "recompense",
   "modifier",
   "composer",
+  "habillage",
 ] as const;
 
 /* -------------------------------------------------------- sortie complète */
@@ -447,6 +493,14 @@ export const CarteSchema = z.object({
   /** Composition transmise par le modèle (action `composer`). Absente : les
    *  valeurs codées en dur de toCardDoc.ts servent de repli — voir ce fichier. */
   composition: CompositionSchema.optional(),
+  /** Habillage demandé par le modèle (action `habillage`), une fois l'image
+   *  réellement produite. Présent : il devient le fond de la carte et la
+   *  composition de calques s'efface derrière lui — seuls les tampons et le
+   *  code-barres restent posés par-dessus. */
+  habillage: HabillageSchema.extend({
+    /** Data URL de l'image produite par le modèle d'image. */
+    image: z.string().min(1),
+  }).optional(),
   /** Cibles réellement touchées par cette génération. Sert au test de verrou. */
   ciblesModifiees: z.array(CibleSchema).default([]),
 });

@@ -15,6 +15,8 @@
 
 import type {
   ChatResult,
+  FormatImage,
+  ImageResult,
   LLMProvider,
   Message,
   Tool,
@@ -23,6 +25,16 @@ import type {
 
 const URL_BASE = "https://api.openai.com/v1";
 const TIMEOUT_MS = 60_000;
+/** La génération d'image est lente (30 à 60 s observées) : son propre délai. */
+const TIMEOUT_IMAGE_MS = 180_000;
+
+/** Tailles acceptées par l'API d'images. Le paysage 1536×1024 (ratio 1.5) est
+ *  le plus proche du ratio d'une carte (85.6/53.98 ≈ 1.586). */
+const TAILLES: Record<FormatImage, string> = {
+  paysage: "1536x1024",
+  portrait: "1024x1536",
+  carre: "1024x1024",
+};
 
 function env(nom: string): string | undefined {
   const v = (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -34,7 +46,7 @@ function env(nom: string): string | undefined {
 // Journal minimal, aligné sur celui de la route /api/assistant : jamais la
 // clé, jamais le contenu de la conversation.
 function journaliser(
-  appel: "chat" | "vision",
+  appel: "chat" | "vision" | "image",
   event: "start" | "success" | "error",
   modele: string,
   details: Record<string, unknown> = {},
@@ -49,6 +61,13 @@ export interface OptionsOpenAI {
   modele?: string;
   /** Modèle distinct pour l'analyse d'image. Par défaut, le même. */
   modeleVision?: string;
+  /**
+   * Modèle de GÉNÉRATION d'image (famille gpt-image), distinct du modèle de
+   * raisonnement : un modèle de chat ne sait pas produire d'image, et un
+   * modèle d'image ne sait pas tenir une conversation. Les deux sont
+   * nécessaires — voir la méthode `image()`.
+   */
+  modeleImage?: string;
   urlBase?: string;
   fetchImpl?: typeof fetch;
 }
@@ -124,6 +143,10 @@ export function creerOpenAIProvider(options: OptionsOpenAI = {}): LLMProvider {
   const cle = options.cle ?? env("OPENAI_API_KEY")!;
   const modele = options.modele ?? env("FIDIIA_OPENAI_MODEL")!;
   const modeleVision = options.modeleVision ?? env("FIDIIA_OPENAI_MODEL_VISION") ?? modele;
+  // Pas de repli sur `modele` ici, contrairement à la vision : un modèle de
+  // raisonnement appelé sur /images/generations renvoie une erreur, pas une
+  // image. Absent = l'habillage est simplement désactivé (voir `image()`).
+  const modeleImage = options.modeleImage ?? env("FIDIIA_OPENAI_MODEL_IMAGE");
   const urlBase = options.urlBase ?? env("FIDIIA_OPENAI_BASE_URL") ?? URL_BASE;
   const appeler = options.fetchImpl ?? fetch;
 
@@ -245,6 +268,56 @@ export function creerOpenAIProvider(options: OptionsOpenAI = {}): LLMProvider {
         return { data: JSON.parse(texte) };
       } catch {
         return { data: { erreur: "sortie vision illisible", texte: texte.slice(0, 2000) } };
+      }
+    },
+
+    async image(prompt: string, format: FormatImage): Promise<ImageResult> {
+      if (!modeleImage) {
+        throw new Error(
+          "[fidiia] FIDIIA_OPENAI_MODEL_IMAGE non défini : l'habillage visuel " +
+            "est désactivé. Listez les modèles d'image disponibles avec " +
+            "« npm run fidiia:modeles » (famille gpt-image) et renseignez-en un.",
+        );
+      }
+      journaliser("image", "start", modeleImage, { format });
+      const ctrl = new AbortController();
+      const minuteur = setTimeout(() => ctrl.abort(), TIMEOUT_IMAGE_MS);
+      try {
+        const r = await appeler(`${urlBase}/images/generations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${cle}` },
+          body: JSON.stringify({ model: modeleImage, prompt, size: TAILLES[format], n: 1 }),
+          signal: ctrl.signal,
+        });
+        if (!r.ok) {
+          const detail = (await r.text().catch(() => "")).slice(0, 500);
+          throw new Error(`[fidiia] openai ${r.status} : ${detail}`);
+        }
+        const data = (await r.json()) as {
+          data?: { b64_json?: string; url?: string }[];
+          usage?: { output_tokens?: number };
+        };
+        const b64 = data.data?.[0]?.b64_json;
+        const url = data.data?.[0]?.url;
+        let dataUrl: string;
+        if (b64) {
+          dataUrl = `data:image/png;base64,${b64}`;
+        } else if (url) {
+          // Certains modèles renvoient une URL temporaire : on la matérialise
+          // tout de suite, sinon elle expire avant que le client l'affiche.
+          const img = await appeler(url, { signal: ctrl.signal });
+          const buf = Buffer.from(await img.arrayBuffer());
+          dataUrl = `data:image/png;base64,${buf.toString("base64")}`;
+        } else {
+          throw new Error("[fidiia] openai : réponse image sans b64_json ni url");
+        }
+        journaliser("image", "success", modeleImage, { tokensSortie: data.usage?.output_tokens });
+        return { dataUrl, tokensSortie: data.usage?.output_tokens };
+      } catch (err) {
+        journaliser("image", "error", modeleImage, { reason: (err as Error).message.slice(0, 300) });
+        throw err;
+      } finally {
+        clearTimeout(minuteur);
       }
     },
   };

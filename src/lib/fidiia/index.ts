@@ -152,6 +152,10 @@ export function construireCarte(etat: ConversationState, ciblesModifiees: Cible[
     // toCardDoc.ts applique son repli codé en dur — ce fichier ne synthétise
     // aucune composition de secours, ça n'a jamais été demandé au corpus.
     composition: etat.composition,
+    // L'habillage ne compte que si l'image a réellement été produite : une
+    // demande sans image n'est pas affichable, la carte retombe alors sur la
+    // composition de calques.
+    habillage: etat.habillage?.image ? { ...etat.habillage, image: etat.habillage.image } : undefined,
     programme: {
       mode,
       objectif,
@@ -424,6 +428,31 @@ export async function envoyerMessage(
   }
   actions = appliquees;
 
+  // 3ter. L'habillage vient d'être demandé mais l'image n'existe pas encore :
+  // c'est ici qu'on appelle le modèle d'image, hors de `appliquerAction` qui
+  // est pure. Un échec ne fait pas tomber le tour — la carte se rendra par la
+  // composition de calques, en moins beau mais en état de marche.
+  if (session.etat.habillage && !session.etat.habillage.image) {
+    const demande = session.etat.habillage;
+    try {
+      const res = await session.provider.image(demande.prompt, "paysage");
+      session.etat = majEtat(session.etat, { habillage: { ...demande, image: res.dataUrl } });
+      journaliser("habillage_genere", {
+        tokensSortie: res.tokensSortie,
+        modele: session.provider.id,
+        caracteresPrompt: demande.prompt.length,
+      });
+    } catch (err) {
+      journaliser("habillage_echec", { reason: (err as Error).message?.slice(0, 200) });
+      // La demande est retirée : la garder ferait retenter l'appel à chaque
+      // tour suivant, et le commerçant paierait plusieurs fois le même échec.
+      session.etat = majEtat(session.etat, { habillage: undefined });
+      notesCorrections.push(
+        "Je n'ai pas réussi à produire l'habillage visuel ; la carte est rendue dans un style plus sobre.",
+      );
+    }
+  }
+
   // Un design ou une composition transmis APRÈS la création de la carte (rare
   // maintenant que `composer` peut arriver dans le même tour que le dernier
   // champ requis, mais toujours possible sur un ajustement ultérieur) doivent
@@ -435,6 +464,12 @@ export async function envoyerMessage(
     }
     if (actions.some((a) => a.type === "composer")) {
       session.carte = { ...session.carte, composition: session.etat.composition };
+    }
+    // Même raison pour l'habillage — mais on ne le pose que si l'image a
+    // réellement été produite : un habillage sans image n'est pas affichable.
+    const h = session.etat.habillage;
+    if (actions.some((a) => a.type === "habillage") && h?.image) {
+      session.carte = { ...session.carte, habillage: { ...h, image: h.image } };
     }
   }
 

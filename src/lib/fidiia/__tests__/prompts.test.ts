@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 
 import { IDENTITY, IDENTITY_VERSION } from "../prompts/identity.ts";
 import { GUARDRAILS, GUARDRAILS_VERSION } from "../prompts/guardrails.ts";
-import { CONTRACT, CONTRACT_VERSION, COMPOSER_EXEMPLE } from "../prompts/contract.ts";
+import { CONTRACT, CONTRACT_VERSION, COMPOSER_EXEMPLE, HABILLAGE_EXEMPLE } from "../prompts/contract.ts";
 import { MAX_CARACTERES, MAX_MESSAGES, PROMPT_VERSION } from "../prompts/build.ts";
 import { MAX_APPELS_PAR_MESSAGE } from "../index.ts";
 import {
@@ -77,11 +77,12 @@ const VALEURS_DECLAREES = [
   PCT_MAX,
 ];
 
-// Le JSON d'exemple de `composer` (COMPOSER_EXEMPLE) porte des coordonnées et
-// des couleurs illustratives, pas des bornes — voir le commentaire à sa
-// définition dans contract.ts. Il est retiré avant le contrôle des chiffres,
-// pas de tout le reste (le texte autour de l'exemple reste vérifié).
-const CONTRACT_SANS_EXEMPLE = CONTRACT.replace(COMPOSER_EXEMPLE, "");
+// Les deux exemples (COMPOSER_EXEMPLE, HABILLAGE_EXEMPLE) portent des
+// coordonnées, des couleurs, une adresse et un téléphone illustratifs — pas
+// des bornes ; voir les commentaires à leur définition dans contract.ts. Ils
+// sont retirés avant le contrôle des chiffres, pas de tout le reste : le
+// texte autour des exemples reste vérifié.
+const CONTRACT_SANS_EXEMPLE = CONTRACT.replace(COMPOSER_EXEMPLE, "").replace(HABILLAGE_EXEMPLE, "");
 
 const BLOCS: [string, string][] = [
   ["identity.ts", IDENTITY],

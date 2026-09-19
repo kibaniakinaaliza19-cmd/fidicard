@@ -35,7 +35,7 @@ import type {
 } from "@/types/layer";
 import { createDefaultStampGridZone } from "@/lib/loyalty/renderLayer";
 import type { LoyaltyConfig } from "@/lib/loyalty";
-import type { CalqueCompose, Carte, Composition } from "../validation/schemas.ts";
+import type { CalqueCompose, Carte, Composition, ZoneReservee } from "../validation/schemas.ts";
 
 let compteur = 0;
 function id(prefixe: string): string {
@@ -63,7 +63,124 @@ const socle = (nom: string, z: number) => ({
  * le voie.
  */
 export function versCardDoc(carte: Carte): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
+  // Trois régimes, du plus beau au plus sûr :
+  //   habillage    une image peinte par le modèle d'image porte tout le
+  //                décor ; seuls tampons et code-barres se superposent.
+  //   composition  le modèle a composé des calques (pas de photo fondue, pas
+  //                de typographie display, mais une vraie mise en page).
+  //   gabarit      ni l'un ni l'autre : le filet de sécurité codé en dur.
+  if (carte.habillage) return depuisHabillage(carte, carte.habillage);
   return carte.composition ? depuisComposition(carte, carte.composition) : depuisGabarit(carte);
+}
+
+/* ------------------------------------------------- traduction : habillage */
+//
+// Le rendu HTML ne sait pas peindre une photo fondue dans un fond noir, une
+// typographie patinée ou un coup de pinceau. Un modèle d'image, si. Cette
+// fonction ne fait donc presque rien : elle pose l'image en fond et replace
+// par-dessus les deux seuls éléments qui ne peuvent PAS être peints —
+//   la grille de tampons, qui doit refléter les passages réels du client ;
+//   le code-barres, qui doit se scanner.
+// Tout le reste (nom, slogan, récompense, pictogrammes, coordonnées) est déjà
+// DANS l'image : le redessiner en calques le ferait apparaître en double.
+
+/**
+ * L'image d'habillage sort en 1536×1024 (ratio 1.5) ; une carte a le ratio
+ * d'une carte bancaire (85.6/53.98 ≈ 1.586). Le fond est affiché en
+ * `cover` (lib/backgroundStyle.ts) : l'image est donc mise à la largeur, puis
+ * ROGNÉE de 2,7 % en haut et 2,7 % en bas.
+ *
+ * Les zones réservées sont exprimées par le modèle dans le repère de
+ * l'IMAGE. Sans cette conversion, la grille de tampons et le code-barres
+ * tomberaient 2,7 % trop haut et seraient 5,4 % trop grands — assez pour
+ * déborder des cadres visibles peints dans l'habillage.
+ */
+const RATIO_IMAGE = 1536 / 1024;
+const RATIO_CARTE = 85.6 / 53.98;
+/** Part de la hauteur d'image réellement visible une fois le `cover` appliqué. */
+const VISIBLE = RATIO_IMAGE / RATIO_CARTE;
+const ROGNE_HAUT = (1 - VISIBLE) / 2;
+
+function versRepereCarte(z: ZoneReservee): ZoneReservee {
+  // `x` et `largeur` sont inchangés : le `cover` conserve toute la largeur.
+  const y = (z.y / 100 - ROGNE_HAUT) / VISIBLE;
+  const hauteur = z.hauteur / 100 / VISIBLE;
+  return {
+    x: z.x,
+    largeur: z.largeur,
+    y: Math.max(0, Math.min(100, y * 100)),
+    hauteur: Math.max(0, Math.min(100, hauteur * 100)),
+  };
+}
+
+function depuisHabillage(
+  carte: Carte,
+  habillage: NonNullable<Carte["habillage"]>,
+): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
+  const zc = versRepereCarte(habillage.zoneCode);
+  const codeBarres: BarcodeLayer = {
+    ...socle("Code-barres", 100),
+    type: "barcode",
+    x: zc.x,
+    y: zc.y,
+    width: zc.largeur,
+    height: zc.hauteur,
+    value: carte.nomCommerce.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12) || "FIDICARD",
+    lineColor: "#141414",
+    background: "#ffffff",
+  };
+
+  const zt = versRepereCarte(habillage.zoneTampons);
+  const zones: Zone[] =
+    carte.programme.mode === "stamps"
+      ? [
+          zoneDepuisComposition({
+            x: zt.x,
+            y: zt.y,
+            largeur: zt.largeur,
+            hauteur: zt.hauteur,
+            // La grille reprend la forme et les couleurs du design quand il
+            // existe : l'habillage ne les transmet pas, et des tampons gris
+            // sur une carte orange se verraient immédiatement.
+            forme: "cercle",
+            colonnes: Math.min(10, Math.max(1, Math.ceil(carte.programme.objectif / 2))),
+            icone: carte.design?.icone ?? "Gift",
+            couleurRempli: carte.design?.accent ?? "#ffffff",
+            couleurVide: "#00000055",
+          },
+          // Le libellé du dernier palier (« OFFERT ») est écrit DANS le
+          // tampon, en couleur d'accent sur un tampon vide donc sombre :
+          // illisible, et surtout redondant — l'habillage annonce déjà la
+          // récompense en toutes lettres, bien plus lisiblement.
+          { libellesPaliers: false }),
+        ]
+      : [];
+
+  const doc: CardDoc = {
+    id: id("carte"),
+    name: carte.nomCommerce,
+    category: "fidiia",
+    background: {
+      kind: "image",
+      color: "#0d0d0d",
+      gradientFrom: "#0d0d0d",
+      gradientTo: "#0d0d0d",
+      gradientAngle: 135,
+      pattern: "dots",
+      patternColor: "#0d0d0d",
+      image: habillage.image,
+      // Aucun assombrissement : l'image EST le design fini, le voiler
+      // reviendrait à abîmer ce qu'on vient de payer pour produire.
+      imageDim: 0,
+    },
+    layers: [codeBarres],
+    published: false,
+    updatedAt: Date.now(),
+    version: 2,
+    zones,
+  };
+
+  return { doc, config: configDepuisCarte(carte) };
 }
 
 function configDepuisCarte(carte: Carte): Partial<LoyaltyConfig> {
@@ -239,7 +356,10 @@ function fondDepuisComposition(fond: Composition["fond"]): CardBackground {
  * suffit, la taille d'un tampon n'a besoin d'être qu'une fraction cohérente
  * de la largeur disponible, jamais une valeur qui déborderait.
  */
-function zoneDepuisComposition(zc: Composition["zoneFidelite"]): StampGridZone {
+function zoneDepuisComposition(
+  zc: Composition["zoneFidelite"],
+  opts: { libellesPaliers?: boolean } = {},
+): StampGridZone {
   const size = Math.max(2, Math.min(30, (zc.largeur / zc.colonnes) * 0.7));
   return {
     id: id("zone"),
@@ -248,7 +368,7 @@ function zoneDepuisComposition(zc: Composition["zoneFidelite"]): StampGridZone {
     size,
     shape: zc.forme,
     perRow: zc.colonnes,
-    showTierLabels: true,
+    showTierLabels: opts.libellesPaliers ?? true,
     icon: zc.icone,
     styleOverride: { filled: zc.couleurRempli, empty: zc.couleurVide },
   };

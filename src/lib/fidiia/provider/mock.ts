@@ -7,7 +7,20 @@
 // Il produit délibérément des sorties INVALIDES sur certains déclencheurs :
 // sans ça, on ne testerait jamais que la validation rejette.
 
-import type { ChatResult, LLMProvider, Message, Tool, VisionResult } from "./types.ts";
+import type {
+  ChatResult,
+  FormatImage,
+  ImageResult,
+  LLMProvider,
+  Message,
+  Tool,
+  VisionResult,
+} from "./types.ts";
+
+/** PNG 1×1 transparent, en dur : le simulé ne fabrique pas d'image, il en
+ *  renvoie une valide et minuscule pour que le reste du moteur se teste. */
+const PNG_VIDE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 function normaliser(t: string): string {
   return t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -356,6 +369,16 @@ export function creerMockProvider(options: OptionsMock = {}): LLMProvider {
           recompense: { texte: "Une viennoiserie offerte", libelleCourt: "Offert" },
         },
       };
+    },
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async image(prompt: string, _format: FormatImage): Promise<ImageResult> {
+      // Aucun réseau, aucun coût : une image valide mais vide. Un déclencheur
+      // permet de tester le chemin d'échec sans dépendre d'une panne réelle.
+      if (normaliser(prompt).includes("__image_impossible__")) {
+        throw new Error("[mock] génération d'image refusée");
+      }
+      return { dataUrl: PNG_VIDE, tokensSortie: 0 };
     },
   };
 }

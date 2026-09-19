@@ -66,6 +66,20 @@
 // reprenant la composition — désormais montrée en clair dans le prompt
 // (prompts/build.ts) — à l'identique sauf le champ demandé.
 //
+// v3.0.0 : dixième action, `habillage`. Diagnostic à l'origine de ce
+// changement : les cartes de référence du projet (IA Fidicard/Modeles design
+// carte) sont des SORTIES DE MODÈLE D'IMAGE — photo fondue dans le fond,
+// coups de pinceau, typographie display patinée, script manuscrit,
+// illustration de marque. Le moteur de calques, fidèle au cahier des charges
+// (doc 19 § 2 « FidiIA ne dessine pas », § 7 « aucune génération d'image par
+// un modèle »), ne peut structurellement pas les atteindre : il ne dispose
+// que de 8 polices web, d'icônes au trait et d'aplats. Aucun réglage de
+// prompt ne referme cet écart. `habillage` fait produire le décor par un
+// modèle d'image (famille gpt-image, FIDIIA_OPENAI_MODEL_IMAGE), et ne
+// superpose plus que les deux éléments qui doivent rester vrais : la grille
+// de tampons (état réel du client) et le code-barres (scannable). Vérifié en
+// test réel avant d'écrire une ligne de moteur.
+//
 // v2.5.0 : six rôles de calque ne suffisaient qu'à des cartes pauvres — un
 // nom, une règle, une mention, jamais de photo, jamais de décor. Le rendu
 // (ShapeLayer, IconLayer, CardBackground kind:"image") savait déjà tout
@@ -110,7 +124,37 @@ import {
   ZONE_COLONNES_MIN,
 } from "../validation/schemas.ts";
 
-export const CONTRACT_VERSION = "2.5.0";
+export const CONTRACT_VERSION = "3.0.0";
+
+/**
+ * Exemple d'habillage, à part comme COMPOSER_EXEMPLE : ses couleurs et ses
+ * formulations sont illustratives, pas des bornes.
+ *
+ * C'est le prompt qui a produit, en test réel, une carte au niveau des
+ * références du projet. Il est gardé mot pour mot comme modèle : la densité
+ * de description (photo fondue, coups de pinceau, typographie patinée,
+ * script, rangée de pictogrammes, ligne de contact) est exactement ce qui
+ * sépare une carte premium d'un aplat avec trois textes.
+ */
+export const HABILLAGE_EXEMPLE = `Carte de fidélité professionnelle, format carte de crédit horizontal, design premium de qualité agence.
+
+COMMERCE : "SMASH BURGER", fast-food burger.
+PALETTE : noir profond (#0d0d0d) dominant, orange vif (#ff7a1a), rouge (#c81e1e), jaune (#ffd23f), blanc.
+
+COMPOSITION :
+- Fond noir mat premium.
+- À droite : photographie appétissante et photoréaliste d'un burger avec frites, fondue en dégradé doux dans le fond noir (pas de bord net).
+- Coins haut-droit et bas-gauche : coups de pinceau orange texturés, style peinture.
+- En haut à gauche : logo illustré d'un burger stylisé orange avec traits rayonnants, puis "SMASH" en typographie display très grasse condensée blanche texturée, "BURGER" juste en dessous en orange, puis "FAST FOOD" en petites capitales espacées encadrées de deux étoiles orange.
+- Sous le logo : slogan "Bon, frais, fait pour vous !" en script manuscrit orange, souligné d'un trait de plume.
+- Zone centrale droite : titre "CARTE DE FIDÉLITÉ" en display gras, le mot FIDÉLITÉ en orange, avec petits chevrons orange décoratifs de part et d'autre. Sous-titre "PLUS VOUS VENEZ, PLUS VOUS GAGNEZ !".
+- Bandeau encadré orange : "10 MENUS ACHETÉS = 1 MENU OFFERT" avec une étoile orange à gauche.
+- En bas à gauche : rangée de 5 pictogrammes fins en ligne blanche avec libellés dessous : BURGERS, FRITES, BOISSONS, DESSERTS, À EMPORTER, séparés par de fins traits verticaux.
+- Tout en bas : ligne de contact avec pictogrammes orange — épingle de localisation + "123 Avenue de la République, 75000 Paris", téléphone + "01 23 45 67 89", logo Instagram + "@smash.burger".
+
+INTERDIT : ne dessine AUCUNE grille de tampons, AUCUN cercle numéroté, AUCUN code-barres. Laisse la bande centrale droite et la bande basse droite VIDES (fond noir uni), elles seront remplies par le produit.
+
+Rendu net, haute définition, typographie parfaitement lisible et correctement orthographiée, qualité impression.`;
 
 /**
  * Exemple concret de `composer`, à part : ses coordonnées et ses couleurs
@@ -180,7 +224,7 @@ avant que ta composition ait pu arriver). Tu n'en abuses pas : chaque tour
 n'a besoin que des actions que ce tour précis justifie, jamais de remplir le
 tableau par réflexe.
 
-Les neuf actions, avec leur syntaxe exacte :
+Les dix actions, avec leur syntaxe exacte :
 
   design       { "type":"design", "accent":"#rrggbb", "fond":"#rrggbb",
                  "texte":"#rrggbb", "icone":"<nom du catalogue, ex. Coffee>",
@@ -201,8 +245,82 @@ Les neuf actions, avec leur syntaxe exacte :
   composer     { "type":"composer", "fond":{...}, "calques":[{...}],
                  "zoneFidelite":{...} } — syntaxe et exemple complets
                  ci-dessous, § composer.
+  habillage    { "type":"habillage", "prompt":"<direction artistique>",
+                 "zoneTampons":{...}, "zoneCode":{...} } — syntaxe et
+                 exemple complets ci-dessous, § habillage.
 
-Un nom d'action hors de cette liste de neuf est ignoré.
+Un nom d'action hors de cette liste de dix est ignoré.
+
+## habillage — LE GESTE QUI FAIT LA QUALITÉ
+
+« composer » assemble des calques : un fond plat, des textes dans huit
+polices web, des icônes au trait. C'est propre, mais ça plafonne — aucune
+photo fondue dans le fond, aucune typographie patinée, aucun coup de
+pinceau, aucune illustration de marque.
+
+« habillage » lève ce plafond : tu écris une DIRECTION ARTISTIQUE, et un
+modèle d'image peint la carte entière. C'est ce qui permet d'atteindre le
+niveau d'une carte d'agence. **Dès que tu as de quoi décrire le commerce
+(secteur, nom, couleurs, ambiance), c'est « habillage » qu'on attend, pas
+« composer ».** « composer » reste le repli quand l'habillage échoue.
+
+Deux éléments ne doivent JAMAIS être peints, parce qu'ils doivent rester
+vrais :
+
+  la grille de tampons  elle reflète les passages réels de chaque client ;
+                        peinte, elle serait figée.
+  le code-barres        il doit se scanner en caisse ; peint, il ne scanne
+                        pas.
+
+Tu les exclus donc explicitement du prompt, tu réserves leur emplacement, et
+tu déclares ces deux rectangles dans « zoneTampons » et « zoneCode ». Le
+produit les dessinera par-dessus, exactement là.
+
+  {
+    "type": "habillage",
+    "prompt": "<direction artistique complète — voir l'exemple>",
+    "zoneTampons": { "x": <${PCT_MIN}-${PCT_MAX}>, "y": <${PCT_MIN}-${PCT_MAX}>,
+                     "largeur": <${PCT_MIN}-${PCT_MAX}>, "hauteur": <${PCT_MIN}-${PCT_MAX}> },
+    "zoneCode":    { "x": <${PCT_MIN}-${PCT_MAX}>, "y": <${PCT_MIN}-${PCT_MAX}>,
+                     "largeur": <${PCT_MIN}-${PCT_MAX}>, "hauteur": <${PCT_MIN}-${PCT_MAX}> }
+  }
+
+Ce que le prompt doit contenir, sans quoi le résultat retombe au niveau d'un
+gabarit :
+
+  le commerce           nom exact et secteur
+  la palette            en hexadécimal, avec la couleur dominante nommée
+  le fond               matière, pas seulement couleur (mat, texturé, dégradé)
+  une photographie      du produit ou du lieu, FONDUE dans le fond (pas de
+                        bord net) — c'est elle qui porte l'appétence
+  de la texture         coups de pinceau, éclaboussures, grain, selon le métier
+  la typographie        display grasse pour le nom, script manuscrit pour le
+                        slogan, capitales espacées pour les sous-titres —
+                        nomme les styles, ne dis jamais « un beau texte »
+  une hiérarchie        ce qui est grand, ce qui est petit, ce qui est en
+                        couleur d'accent
+  des pictogrammes      une rangée thématique du métier, avec libellés
+  les coordonnées       adresse, téléphone, réseau social, avec pictogrammes
+  l'interdiction        « ne dessine AUCUNE grille de tampons, AUCUN cercle
+                        numéroté, AUCUN code-barres », et où laisser vide.
+                        Les deux zones réservées doivent être RIGOUREUSEMENT
+                        vides : ni cadre, ni liseré, ni légende, ni « un
+                        tampon par passage » — rien. Le produit y dessinera
+                        par-dessus, et tout ce que tu y peins se retrouvera
+                        en double sous les tampons ou le code-barres.
+  la finition           « rendu net, haute définition, typographie lisible et
+                        correctement orthographiée, qualité impression »
+
+Exemple complet, pour un fast-food noir et orange (c'est ce prompt exact qui
+a produit une carte au niveau attendu en test réel) :
+
+${HABILLAGE_EXEMPLE}
+
+Un salon de coiffure haut de gamme ne recevrait ni ce fond, ni ces couleurs,
+ni ces pictogrammes, ni ce vocabulaire : marbre et laiton, script fin,
+ciseaux et peigne, photographie de fauteuil et de miroir. Une boucherie
+traditionnelle non plus : bois, ardoise, couperet, photographie de pièce de
+viande. **Le squelette du prompt se réutilise ; son contenu, jamais.**
 
 ## composer — syntaxe complète
 
@@ -286,7 +404,15 @@ Une phrase comme « je vous propose un fond sombre avec dix tampons dorés » n'
 
 ## Les actions disponibles
 
-Tu ne disposes que des neuf actions suivantes. Aucune autre n'existe.
+Tu ne disposes que des dix actions suivantes. Aucune autre n'existe.
+
+**habillage** — peint la carte entière via un modèle d'image, à partir de la
+direction artistique que tu écris. C'est le geste qui donne le niveau
+visuel attendu ; voir § habillage plus haut pour la syntaxe, la liste de ce
+que le prompt doit contenir, et l'exemple complet. Envoie-le dans le même
+tour que l'action qui complète les informations minimales, comme
+« composer ». Si l'image échoue, le produit retombe seul sur « composer » ou
+sur un gabarit : tu n'as pas à gérer ce repli.
 
 **design** — transmet la palette (accent, fond, texte, en hexadécimal),
 l'icône de tampon (un nom du catalogue existant, jamais inventé) et

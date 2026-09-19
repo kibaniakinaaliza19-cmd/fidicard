@@ -7,13 +7,19 @@
 
 import type { Action, Cible, Composition } from "../validation/schemas.ts";
 import { bornesObjectif, CibleSchema } from "../validation/schemas.ts";
-import { chevauchementExcessif, corrigerComposition, nettoyerContraste } from "../validation/quality.ts";
+import { chevauchementExcessif, corrigerComposition, nettoyerContraste, recadrerRect } from "../validation/quality.ts";
 import type { ConversationState } from "../state/conversationState.ts";
 import { majEtat } from "../state/conversationState.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
 import { estVerrouille, noterDecision, noterPreference, poserVerrou } from "../state/sessionMemory.ts";
 
 export type CodeRefus = "VERROU" | "INVALIDE" | "INCONNU";
+
+/** `recadrerRect` ajoute un drapeau `corrige` utile au journal mais qui n'a
+ *  rien à faire dans l'état : il le retire avant stockage. */
+function sansMarqueur(r: { x: number; y: number; largeur: number; hauteur: number }) {
+  return { x: r.x, y: r.y, largeur: r.largeur, hauteur: r.hauteur };
+}
 
 export type ResultatAction =
   | {
@@ -88,6 +94,36 @@ export function appliquerAction(
         effet: corrections.length ? `composition appliquée (${corrections.join(", ")})` : "composition appliquée",
         noteCommercante: corrections.length
           ? "J'ai fait quelques ajustements automatiques pour que tout reste lisible et dans le cadre."
+          : undefined,
+      };
+    }
+
+    case "habillage": {
+      // L'image elle-même n'est PAS produite ici : cette fonction est pure et
+      // n'a pas de fournisseur. On n'enregistre que la demande ; c'est
+      // `envoyerMessage` (fidiia/index.ts) qui appelle le modèle d'image et
+      // vient compléter `image` juste après.
+      const demande = {
+        prompt: action.prompt,
+        zoneTampons: recadrerRect(action.zoneTampons),
+        zoneCode: recadrerRect(action.zoneCode),
+      };
+      const e = majEtat(etat, {
+        habillage: {
+          prompt: demande.prompt,
+          zoneTampons: sansMarqueur(demande.zoneTampons),
+          zoneCode: sansMarqueur(demande.zoneCode),
+        },
+      });
+      const m = noterDecision(memory, "habillage", { caracteres: action.prompt.length });
+      const recadre = demande.zoneTampons.corrige || demande.zoneCode.corrige;
+      return {
+        ok: true,
+        etat: e,
+        memory: m,
+        effet: recadre ? "habillage demandé (zone réservée recadrée)" : "habillage demandé",
+        noteCommercante: recadre
+          ? "J'ai légèrement recadré une zone réservée pour qu'elle tienne dans la carte."
           : undefined,
       };
     }

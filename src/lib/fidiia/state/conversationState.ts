@@ -4,7 +4,7 @@
 // seule. Impossible de le forcer à la main, donc impossible de créer une carte
 // sans les cinq informations minimales du contrat de sortie.
 
-import type { Ambiance, Composition, Design, ModeFidelite, Palier, Recompense } from "../validation/schemas.ts";
+import type { Ambiance, Composition, Design, Habillage, ModeFidelite, Palier, Recompense } from "../validation/schemas.ts";
 
 export type NiveauStyle = "connu" | "partiel" | "inconnu";
 
@@ -43,6 +43,14 @@ export interface EtatBrut {
    *  (recadrage, contraste — voir validation/quality.ts). Absente : les
    *  valeurs codées en dur de toCardDoc.ts servent de repli. */
   composition?: Composition;
+  /**
+   * Habillage demandé par le modèle (action `habillage`). `image` n'est
+   * renseignée qu'APRÈS l'appel au modèle d'image, qui ne peut pas avoir lieu
+   * dans `appliquerAction` (fonction pure, sans fournisseur) : c'est
+   * `envoyerMessage` qui la remplit — voir fidiia/index.ts. Tant qu'elle est
+   * absente, la carte se rend sans habillage, par la composition de calques.
+   */
+  habillage?: Habillage & { image?: string };
 }
 
 export interface ConversationState extends EtatBrut {

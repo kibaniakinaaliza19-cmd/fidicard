@@ -456,6 +456,64 @@ test("modifier est REFUSÉ sur une carte composée — pas de fausse confirmatio
   assert.equal(JSON.stringify(r1.etat.composition), avant);
 });
 
+/* ---------------------------------------------------------- habillage */
+//
+// L'habillage est ce qui porte la qualité visuelle (photo fondue, textures,
+// typographie display) : le moteur de calques ne sait pas la produire. Ces
+// tests vérifient que la DEMANDE est bien enregistrée — la génération de
+// l'image, elle, vit dans envoyerMessage (elle a besoin du fournisseur).
+
+function habillageValide() {
+  return {
+    prompt:
+      "Carte de fidélité premium pour « Le Petit Grain », café artisanal. Fond vert sapin mat, " +
+      "photographie de tasse fondue dans le fond, typographie display crème, script manuscrit. " +
+      "Ne dessine aucun tampon, aucun code-barres : laisse la bande basse vide.",
+    zoneTampons: { x: 8, y: 55, largeur: 84, hauteur: 20 },
+    zoneCode: { x: 14, y: 80, largeur: 72, hauteur: 14 },
+  };
+}
+
+test("appliquerAction(habillage) enregistre la demande, sans image", () => {
+  const r = appliquerAction({ type: "habillage", ...habillageValide() }, creerEtat({}), creerMemoire());
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.ok(r.etat.habillage, "la demande doit être enregistrée");
+  assert.equal(r.etat.habillage?.image, undefined, "l'image ne peut pas être produite ici (fonction pure)");
+  assert.equal(r.etat.habillage?.zoneTampons.y, 55);
+});
+
+test("un habillage dont la zone déborde est recadré, pas refusé", () => {
+  const h = habillageValide();
+  h.zoneCode = { x: 95, y: 90, largeur: 30, hauteur: 30 };
+  const r = appliquerAction({ type: "habillage", ...h }, creerEtat({}), creerMemoire());
+  assert.equal(r.ok, true, "un débordement se corrige, il ne fait pas échouer l'habillage");
+  if (!r.ok) return;
+  const z = r.etat.habillage!.zoneCode;
+  assert.ok(z.x + z.largeur <= 100, "la zone ne déborde plus");
+  assert.ok(r.noteCommercante, "la correction est annoncée au commerçant");
+});
+
+test("un prompt d'habillage trop court est rejeté par le schéma", () => {
+  const r = validerAction({ type: "habillage", ...habillageValide(), prompt: "une jolie carte" });
+  assert.equal(r.ok, false, "un prompt d'une ligne ne produirait jamais une carte au niveau attendu");
+});
+
+test("le repère image → carte compense le rognage du fond en `cover`", () => {
+  // L'image sort en ratio 1.5, la carte est en 1.586 : le `cover` rogne
+  // 2,7 % en haut et en bas. Une zone réservée au MILIEU de l'image doit
+  // rester au milieu de la carte ; une zone haute doit remonter.
+  const RATIO_IMAGE = 1536 / 1024;
+  const RATIO_CARTE = 85.6 / 53.98;
+  const visible = RATIO_IMAGE / RATIO_CARTE;
+  const rogneHaut = (1 - visible) / 2;
+  const versCarte = (y: number) => ((y / 100 - rogneHaut) / visible) * 100;
+
+  assert.ok(Math.abs(versCarte(50) - 50) < 0.001, "le centre reste le centre");
+  assert.ok(versCarte(10) < 10, "une zone haute remonte après rognage");
+  assert.ok(versCarte(90) > 90, "une zone basse descend après rognage");
+});
+
 test("modifier « photo » reste accepté sur une carte composée (hors composition)", () => {
   const r1 = appliquerAction({ type: "composer", ...compositionValide() }, creerEtat({}), creerMemoire());
   assert.equal(r1.ok, true);

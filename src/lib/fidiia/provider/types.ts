@@ -42,9 +42,31 @@ export interface VisionResult {
   data: unknown;
 }
 
+export interface ImageResult {
+  /** Data URL de l'image produite (`data:image/png;base64,…`). */
+  dataUrl: string;
+  /** Tokens de sortie facturés, quand le fournisseur les communique. */
+  tokensSortie?: number;
+}
+
 export interface LLMProvider {
   /** Identifiant technique, utilisé pour la journalisation uniquement. */
   readonly id: string;
   chat(messages: Message[], tools: Tool[]): Promise<ChatResult>;
   vision(image: string, prompt: string): Promise<VisionResult>;
+  /**
+   * Génère l'HABILLAGE de la carte : fond, photo fondue, textures, typographie
+   * de marque, pictogrammes — tout ce qui fait la qualité visuelle et qu'un
+   * moteur de calques ne sait pas produire (polices display, script, photo
+   * composite, coups de pinceau).
+   *
+   * Ne produit JAMAIS les éléments fonctionnels : la grille de tampons doit
+   * refléter l'état réel du client, et le code-barres doit être scannable.
+   * Ces deux-là restent déterministes et se superposent par-dessus — voir
+   * adapters/toCardDoc.ts.
+   */
+  image(prompt: string, format: FormatImage): Promise<ImageResult>;
 }
+
+/** Formats acceptés par l'API d'images. `paysage` ≈ ratio d'une carte. */
+export type FormatImage = "paysage" | "portrait" | "carre";
