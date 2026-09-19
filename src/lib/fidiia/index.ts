@@ -277,7 +277,12 @@ function analyseImageValide(brut: unknown): AnalyseImage | null {
   };
 }
 
-export async function envoyerMessage(session: Session, texte: string, image?: string): Promise<Reponse> {
+export async function envoyerMessage(
+  session: Session,
+  texte: string,
+  image?: string,
+  imageRole: "logo" | "photo" = "logo",
+): Promise<Reponse> {
   session.tours += 1;
   session.historique.push({ role: "user", content: texte });
 
@@ -303,10 +308,11 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
       if (analyse) {
         session.etat = majEtat(session.etat, {
           analyseImage: analyse,
-          logo: session.etat.logo ?? "reçu",
+          logo: imageRole === "logo" ? (session.etat.logo ?? "reçu") : session.etat.logo,
+          photo: imageRole === "photo" ? (session.etat.photo ?? "reçu") : session.etat.photo,
         });
-        session.memory = noterInformation(session.memory, "image", "analysée");
-        journaliser("image_analysee", { couleurs: analyse.couleurs.length });
+        session.memory = noterInformation(session.memory, "image", `analysée (${imageRole})`);
+        journaliser("image_analysee", { couleurs: analyse.couleurs.length, role: imageRole });
       } else {
         journaliser("image_illisible");
       }

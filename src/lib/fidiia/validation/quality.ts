@@ -6,7 +6,7 @@
 // avertissement : elle est corrigée ou remplacée.
 
 import type { Carte, Composition, Fond, RoleCalque } from "./schemas.ts";
-import { bornesObjectif, CHEVAUCHEMENT_MAX_PCT, LIBELLE_COURT_MAX } from "./schemas.ts";
+import { bornesObjectif, CHEVAUCHEMENT_MAX_PCT, LIBELLE_COURT_MAX, ROLES_CALQUE_TEXTE } from "./schemas.ts";
 import type { SessionMemory } from "../state/sessionMemory.ts";
 import { estVerrouille } from "../state/sessionMemory.ts";
 
@@ -257,19 +257,27 @@ export function chevauchementRatio(a: RectPct, b: RectPct): number {
   return inter > 0 && plusPetit > 0 ? inter / plusPetit : 0;
 }
 
-/** Couleur représentative du fond, pour vérifier le contraste d'un calque de
- *  texte contre lui. Un dégradé n'a pas UNE couleur : on vérifie contre son
- *  point de départ, là où les calques du haut de carte se posent le plus
- *  souvent — une approximation assumée, pas un rendu pixel par pixel. */
+/**
+ * Couleur représentative du fond, pour vérifier le contraste d'un calque de
+ * texte contre lui. Un dégradé n'a pas UNE couleur : on vérifie contre son
+ * point de départ, là où les calques du haut de carte se posent le plus
+ * souvent — une approximation assumée, pas un rendu pixel par pixel. Une
+ * photo n'a évidemment pas de couleur fixe non plus : elle est toujours
+ * assombrie (voir FondSchema.image, adapters/toCardDoc.ts), on vérifie donc
+ * contre un gris sombre plutôt que d'inventer une teinte issue du fichier.
+ */
 export function couleurDominanteFond(fond: Fond): string {
   if (fond.type === "uni") return fond.couleur;
   if (fond.type === "degrade") return fond.de;
+  if (fond.type === "image") return "#333333";
   return fond.base;
 }
 
-/** Rôles porteurs de texte réel — le logo est une image, il n'a ni contraste
- *  de texte ni recouvrement de lecture à vérifier. */
-const ROLES_TEXTE = new Set<RoleCalque>(["nom", "slogan", "recompense", "mention", "code"]);
+/** Rôles porteurs de texte réel — logo/photo sont des images, decoration et
+ *  pictogramme ont leurs propres champs : aucun n'a de contraste de texte ni
+ *  de recouvrement de lecture à vérifier. Même liste que schemas.ts pour ne
+ *  jamais diverger sur ce qui compte comme « du texte ». */
+const ROLES_TEXTE = new Set<RoleCalque>(ROLES_CALQUE_TEXTE);
 
 /**
  * Corrige une composition : calques et zone ramenés dans le cadre, contraste

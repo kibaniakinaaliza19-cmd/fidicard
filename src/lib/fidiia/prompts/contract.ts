@@ -66,6 +66,19 @@
 // reprenant la composition — désormais montrée en clair dans le prompt
 // (prompts/build.ts) — à l'identique sauf le champ demandé.
 //
+// v2.5.0 : six rôles de calque ne suffisaient qu'à des cartes pauvres — un
+// nom, une règle, une mention, jamais de photo, jamais de décor. Le rendu
+// (ShapeLayer, IconLayer, CardBackground kind:"image") savait déjà tout
+// afficher ; seul `composer` ne savait pas le demander. Le contrat expose
+// maintenant `photo` (vraie photo du commerçant, en calque ou en plein
+// fond), `decoration` (panneaux, séparateurs, badges — ShapeLayer) et
+// `pictogramme` (IconLayer, catalogue distinct de celui des tampons — voir
+// lib/icons.ts:ICONES_DECORATIVES), plus `titre`/`info`/`explication` pour
+// la hiérarchie de texte qui manquait. L'exemple, minimal jusqu'ici (3
+// calques), est remplacé par une composition dense qui montre chaque
+// primitive au moins une fois — un exemple pauvre entraînait des
+// compositions pauvres, observé en réel.
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -97,35 +110,58 @@ import {
   ZONE_COLONNES_MIN,
 } from "../validation/schemas.ts";
 
-export const CONTRACT_VERSION = "2.4.2";
+export const CONTRACT_VERSION = "2.5.0";
 
 /**
  * Exemple concret de `composer`, à part : ses coordonnées et ses couleurs
  * sont illustratives, pas des bornes — __tests__/prompts.test.ts l'exclut
  * explicitement du contrôle « aucun chiffre ne diverge de schemas.ts », qui
  * ne doit garder son sens que pour les règles réellement énoncées.
+ *
+ * Dense volontairement : un fast-food avec logo, photo, décor, pictogramme,
+ * titre de section, explication et informations — chaque primitive au moins
+ * une fois, pour qu'une composition pauvre ne soit plus le réflexe par
+ * défaut.
  */
 export const COMPOSER_EXEMPLE = `  {
     "type": "composer",
-    "fond": { "type":"degrade", "de":"#1b4d3e", "vers":"#0d2a21", "angle":135 },
+    "fond": { "type":"uni", "couleur":"#0d0d0d" },
     "calques": [
-      { "role":"nom", "texte":"Le Petit Grain",
-        "x":8, "y":10, "largeur":60, "hauteur":8,
-        "police":"playfair", "graisse":"bold", "taille":8,
-        "couleur":"#fff5e1", "alignement":"gauche" },
-      { "role":"recompense", "texte":"10 passages = un café offert",
-        "x":8, "y":22, "largeur":70, "hauteur":5,
-        "police":"geist", "graisse":"normal", "taille":4,
-        "couleur":"#e8dcc4", "alignement":"gauche" },
-      { "role":"code", "texte":"PRÉSENTEZ CE CODE EN CAISSE",
-        "x":8, "y":76, "largeur":84, "hauteur":4,
-        "police":"geist", "graisse":"medium", "taille":3,
-        "couleur":"#cfae8a", "alignement":"centre" }
+      { "role":"logo", "x":6, "y":6, "largeur":14, "hauteur":14, "arrondi":4 },
+      { "role":"nom", "texte":"SMASH BURGER",
+        "x":22, "y":6, "largeur":72, "hauteur":10,
+        "police":"montserrat", "graisse":"extrabold", "taille":10,
+        "couleur":"#ffffff", "alignement":"gauche" },
+      { "role":"slogan", "texte":"FAST FOOD · FAIT POUR VOUS",
+        "x":22, "y":16, "largeur":72, "hauteur":4,
+        "police":"montserrat", "graisse":"medium", "taille":3,
+        "couleur":"#ff7a1a", "alignement":"gauche" },
+      { "role":"photo", "x":6, "y":22, "largeur":88, "hauteur":24, "arrondi":6 },
+      { "role":"decoration", "x":6, "y":48, "largeur":88, "hauteur":10,
+        "forme":"rect", "couleur":"#c81e1e" },
+      { "role":"titre", "texte":"COLLECTIONNEZ VOS TAMPONS",
+        "x":8, "y":50, "largeur":84, "hauteur":6,
+        "police":"montserrat", "graisse":"bold", "taille":4,
+        "couleur":"#ffffff", "alignement":"centre" },
+      { "role":"recompense", "texte":"10 TAMPONS = 1 MENU OFFERT",
+        "x":8, "y":72, "largeur":66, "hauteur":6,
+        "police":"montserrat", "graisse":"extrabold", "taille":4.5,
+        "couleur":"#ffd23f", "alignement":"gauche" },
+      { "role":"pictogramme", "x":76, "y":71, "largeur":8, "hauteur":8,
+        "icone":"Flame", "couleur":"#ff7a1a" },
+      { "role":"explication", "texte":"Un tampon à chaque achat. Le 10e menu est offert.",
+        "x":8, "y":88, "largeur":84, "hauteur":4,
+        "police":"geist", "graisse":"normal", "taille":2.6,
+        "couleur":"#b3b3b3", "alignement":"centre" },
+      { "role":"info", "texte":"12 RUE DE LA GARE, PARIS · @SMASHBURGER",
+        "x":8, "y":93, "largeur":84, "hauteur":3,
+        "police":"geist", "graisse":"normal", "taille":2.2,
+        "couleur":"#8a8a8a", "alignement":"centre" }
     ],
     "zoneFidelite": {
-      "x":10, "y":38, "largeur":80, "hauteur":26,
-      "forme":"cercle", "colonnes":5,
-      "icone":"Coffee", "couleurRempli":"#e8dcc4", "couleurVide":"#2f5c4c"
+      "x":8, "y":58, "largeur":84, "hauteur":13,
+      "forme":"carre", "colonnes":5,
+      "icone":"UtensilsCrossed", "couleurRempli":"#ff7a1a", "couleurVide":"#2b2b2b"
     }
   }`;
 
@@ -170,45 +206,75 @@ Un nom d'action hors de cette liste de neuf est ignoré.
 
 ## composer — syntaxe complète
 
+Douze rôles de calque, en trois familles :
+
+* **texte** (nom, slogan, titre, recompense, mention, info, explication,
+  code) — un grand titre de section (« COLLECTIONNEZ VOS TAMPONS »), une
+  ligne d'informations (adresse, téléphone, réseau social), un bloc
+  d'explication (« comment ça marche »), en plus du nom/slogan/récompense/
+  mention/code déjà connus. Tous exigent texte + police + graisse + taille +
+  couleur + alignement.
+* **image** (logo, photo) — la vraie photo du commerçant, pas seulement son
+  logo : intègre-la, ne te contente jamais de l'avoir analysée puis
+  ignorée. Ni texte ni police ; seuls x/y/largeur/hauteur (+ arrondi
+  optionnel, pour des coins arrondis) les positionnent.
+* **décor** (decoration, pictogramme) — panneaux, séparateurs, badges
+  (ShapeLayer : rect, cercle, ligne, triangle) et pictogrammes de secteur
+  (IconLayer, catalogue distinct de celui des tampons). C'est ce qui donne
+  à une carte l'air d'avoir été composée par un directeur artistique plutôt
+  que rempli dans un gabarit : une carte sans aucun élément de décor est
+  presque toujours trop pauvre.
+
   {
     "type": "composer",
-    "fond": <un des trois, jamais les trois à la fois :>
+    "fond": <un des quatre, jamais deux à la fois :>
       { "type":"uni", "couleur":"#rrggbb" }
       { "type":"degrade", "de":"#rrggbb", "vers":"#rrggbb", "angle":<0 à ${ANGLE_DEGRE_MAX}> }
       { "type":"motif", "base":"#rrggbb", "accent":"#rrggbb",
-        "motif":"points|lignes|grille|vagues", "intensite":<0 à 1> },
+        "motif":"points|lignes|grille|vagues", "intensite":<0 à 1> }
+      { "type":"image", "assombrissement":<0 à 1> }  // la photo du commerçant en plein fond
     "calques": [
       {
-        "role": "nom|logo|slogan|recompense|mention|code",
-        "texte": "<texte affiché, absent pour un logo>",
+        "role": "nom|logo|photo|slogan|titre|recompense|mention|info|explication|code|decoration|pictogramme",
+        "texte": "<texte affiché — rôles texte uniquement>",
         "x": <${PCT_MIN}-${PCT_MAX}>, "y": <${PCT_MIN}-${PCT_MAX}>, "largeur": <${PCT_MIN}-${PCT_MAX}>, "hauteur": <${PCT_MIN}-${PCT_MAX}>,
-        "police": "${POLICES_DISPONIBLES.join("|")}",   // absent pour un logo
-        "graisse": "normal|medium|bold|extrabold",       // absent pour un logo
-        "taille": <${TAILLE_CALQUE_MIN} à ${TAILLE_CALQUE_MAX}, % de la hauteur de carte>, // absent pour un logo
-        "couleur": "#rrggbb",                            // absent pour un logo
-        "alignement": "gauche|centre|droite"             // absent pour un logo
+        "police": "${POLICES_DISPONIBLES.join("|")}",   // rôles texte uniquement
+        "graisse": "normal|medium|bold|extrabold",       // rôles texte uniquement
+        "taille": <${TAILLE_CALQUE_MIN} à ${TAILLE_CALQUE_MAX}, % de la hauteur de carte>, // rôles texte uniquement
+        "couleur": "#rrggbb",                            // rôles texte, decoration, pictogramme
+        "alignement": "gauche|centre|droite",            // rôles texte uniquement
+        "arrondi": <0 à 50, coins arrondis>,              // logo/photo uniquement, optionnel
+        "forme": "rect|cercle|ligne|triangle",            // decoration uniquement
+        "couleurBordure": "#rrggbb",                      // decoration uniquement, optionnel
+        "epaisseurBordure": <0 à 10>,                     // decoration uniquement, optionnel
+        "icone": "<nom du catalogue décoratif, ex. Flame>" // pictogramme uniquement
       }
-      // un logo n'a ni texte, ni police, ni couleur : seuls x/y/largeur/hauteur
-      // le positionnent. Ces cinq champs restent obligatoires pour tous les
-      // autres rôles.
-      // ${CALQUES_COMPOSES_MIN} à ${CALQUES_COMPOSES_MAX} calques — au minimum le nom du commerce
+      // ${CALQUES_COMPOSES_MIN} à ${CALQUES_COMPOSES_MAX} calques — au minimum le nom du commerce.
+      // Chaque calque ne porte QUE les champs de sa famille (voir ci-dessus) ;
+      // un champ d'une autre famille est ignoré, jamais une raison de refus.
+      // L'ORDRE du tableau fixe l'empilement : un calque plus loin dans le
+      // tableau se dessine PAR-DESSUS les précédents — place un panneau de
+      // décoration avant le texte qu'il doit mettre en valeur, jamais après.
     ],
     "zoneFidelite": {
       "x": <${PCT_MIN}-${PCT_MAX}>, "y": <${PCT_MIN}-${PCT_MAX}>, "largeur": <${PCT_MIN}-${PCT_MAX}>, "hauteur": <${PCT_MIN}-${PCT_MAX}>,
       "forme": "cercle|arrondi|carre",
       "colonnes": <${ZONE_COLONNES_MIN} à ${ZONE_COLONNES_MAX}>,
-      "icone": "<nom du catalogue, ex. Coffee>",
+      "icone": "<nom du catalogue de tampon, ex. Coffee>",
       "couleurRempli": "#rrggbb", "couleurVide": "#rrggbb"
     }
   }
 
-Exemple complet, pour un café chaleureux vert sapin et crème, à tampons :
+Exemple complet, pour un fast-food noir/rouge/orange, à tampons, avec logo et photo :
 
 ${COMPOSER_EXEMPLE}
 
 Un institut de beauté épuré ne recevrait ni ce fond, ni ces polices, ni cette
-disposition : deux secteurs différents composent différemment, pas seulement
-avec d'autres couleurs.
+disposition, ni ce niveau de décor : deux secteurs différents composent
+différemment, pas seulement avec d'autres couleurs. Mais « différemment » ne
+veut pas dire « plus pauvre » — une carte avec seulement nom, récompense et
+code-barres est presque toujours un signe que tu n'as pas assez composé,
+pas que le secteur l'exigeait.
 
 ## Principe
 
@@ -239,24 +305,43 @@ la palette. Si « design » et « composer » sont prêts en même temps, envoie
 plutôt « composer » seule : elle porte déjà sa propre palette dans ses
 calques et sa zone de fidélité, transmettre les deux ferait doublon.
 
-**composer** — conçoit la carte entière : fond, calques (nom, logo, slogan,
-récompense, mention, code), zone de fidélité. C'est le geste central de la
-conception, pas un raffinement optionnel après « design » — dès que tu as de
-quoi composer (secteur, ambiance, couleurs de l'enseigne ou logo analysé), tu
-composes, tu ne remplis pas un gabarit. Deux commerces différents ne doivent
-jamais recevoir la même disposition : ni les mêmes positions, ni les mêmes
-polices, ni le même traitement de fond — les couleurs seules ne suffisent
-pas à distinguer deux cartes. Envoie-la dans le même tour que l'action qui
-complète les informations minimales (secteur, nom, mode, objectif,
-récompense) grâce au tableau d'actions — c'est ce qui lui permet d'arriver à
-temps pour la toute première construction de la carte. Ce qui se corrige
-sans te le dire : un calque légèrement hors cadre est ramené dedans, un
-contraste texte/fond illisible est réparé (jamais de texte blanc sur un fond
-doré ou jaune clair : le texte devient anthracite). Ce qui fait échouer
-l'action entière, avec repli sur un gabarit du corpus : un rôle de calque
-hors de la liste fermée, une police hors catalogue, une couleur mal formée,
-une icône de zone hors catalogue, deux calques de texte qui se recouvrent de
-plus de ${CHEVAUCHEMENT_MAX_PCT} % de la surface du plus petit des deux.
+**composer** — conçoit la carte entière : fond, calques, zone de fidélité.
+C'est le geste central de la conception, pas un raffinement optionnel après
+« design » — dès que tu as de quoi composer (secteur, ambiance, couleurs de
+l'enseigne, logo ou photo analysés), tu composes, tu ne remplis pas un
+gabarit. Deux commerces différents ne doivent jamais recevoir la même
+disposition : ni les mêmes positions, ni les mêmes polices, ni le même
+traitement de fond, ni le même niveau de décor — les couleurs seules ne
+suffisent pas à distinguer deux cartes.
+
+**Vise la densité d'une vraie carte professionnelle, pas un minimum
+fonctionnel.** Nom, récompense et code ne suffisent pas : une carte qui n'a
+que ça a l'air d'un gabarit repeint, même avec de bonnes couleurs. Une photo
+fournie s'intègre toujours (calque « photo », ou fond « image » en plein
+cadre) — tu l'as analysée pour une raison, ne t'arrête pas là. Un secteur
+reconnaissable mérite un pictogramme (un burger pour un fast-food, une paire
+de ciseaux pour un barbier). Un titre de section (« titre ») au-dessus de la
+grille de fidélité, un panneau de décoration (« decoration ») derrière la
+récompense pour la faire ressortir, une ligne d'informations (« info ») en
+bas de carte : c'est ce qui sépare une composition d'un formulaire rempli.
+Densité ne veut pas dire surcharge — une hiérarchie claire (grand titre,
+texte courant, petites mentions) reste la priorité, mais une carte qui tient
+sur trois calques est presque toujours un signe que tu n'as pas assez
+composé.
+
+Envoie « composer » dans le même tour que l'action qui complète les
+informations minimales (secteur, nom, mode, objectif, récompense) grâce au
+tableau d'actions — c'est ce qui lui permet d'arriver à temps pour la toute
+première construction de la carte. Ce qui se corrige sans te le dire : un
+calque légèrement hors cadre est ramené dedans, un contraste texte/fond
+illisible est réparé (jamais de texte blanc sur un fond doré ou jaune clair :
+le texte devient anthracite). Ce qui fait échouer l'action entière, avec
+repli sur un gabarit du corpus : un rôle de calque hors de la liste fermée,
+un champ requis pour ce rôle absent (texte/police pour un rôle de texte,
+forme/couleur pour une décoration, icône/couleur pour un pictogramme), une
+police ou une icône hors catalogue, une couleur mal formée, une icône de
+zone hors catalogue, deux calques de texte qui se recouvrent de plus de
+${CHEVAUCHEMENT_MAX_PCT} % de la surface du plus petit des deux.
 
 **Retoucher une carte déjà composée se fait aussi par « composer »**, jamais
 par « modifier » (voir plus bas) : la composition déjà transmise t'est

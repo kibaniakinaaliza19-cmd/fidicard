@@ -30,7 +30,8 @@ function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
   if (etat.systemeFidelite) connu.push(`système : ${etat.systemeFidelite}`);
   if (etat.objectif !== undefined) connu.push(`objectif : ${etat.objectif}`);
   if (etat.recompense) connu.push(`récompense : ${etat.recompense.texte}`);
-  if (etat.logo) connu.push("logo : fourni");
+  if (etat.logo) connu.push("logo : fourni — tu peux le placer via un calque de rôle « logo »");
+  if (etat.photo) connu.push("photo de l'établissement : fournie — tu peux la placer via un calque de rôle « photo », ou en fond plein cadre (fond de type « image »)");
   if (etat.ambiance) connu.push(`ambiance : ${etat.ambiance}`);
   if (etat.analyseImage) {
     const a = etat.analyseImage;

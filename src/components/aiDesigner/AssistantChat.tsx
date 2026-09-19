@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Mic, Paperclip, Wand2, RefreshCw, X } from "lucide-react";
+import { Send, Mic, Paperclip, Camera, Wand2, RefreshCw, X } from "lucide-react";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import OrbeIA from "@/components/aiDesigner/OrbeIA";
 import { useCardStore } from "@/store/cardStore";
@@ -82,18 +82,33 @@ const TYPES_IMAGE_ACCEPTES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_TAILLE_IMAGE_OCTETS = 8 * 1024 * 1024;
 
 /**
- * FidiIA décide où et à quelle taille placer le logo (calque nommé "Logo",
- * voir adapters/toCardDoc.ts) mais n'a jamais le fichier réel — seulement son
- * analyse de couleurs. Ce fichier existe côté client (l'upload l'a lu en data
- * URL) : c'est lui qui referme la boucle, sans repasser par le serveur.
+ * FidiIA décide où et à quelle taille placer le logo et la photo (calques
+ * nommés "Logo" / "Photo de l'établissement", voir adapters/toCardDoc.ts —
+ * ou le fond lui-même si le modèle a choisi la photo en plein cadre) mais
+ * n'a jamais les fichiers réels — seulement leur analyse de couleurs. Ces
+ * fichiers existent côté client (l'upload les a lus en data URL) : c'est ce
+ * qui referme la boucle, sans repasser par le serveur.
  */
-function integrerLogoReel(doc: CardDoc, logo: string): CardDoc {
-  const aUnCalqueLogo = doc.layers.some((l) => l.type === "image" && l.name === "Logo");
-  if (!aUnCalqueLogo) return doc;
-  return {
-    ...doc,
-    layers: doc.layers.map((l) => (l.type === "image" && l.name === "Logo" ? { ...l, src: logo } : l)),
-  };
+function integrerImagesReelles(doc: CardDoc, logo: string | null, photo: string | null): CardDoc {
+  let out = doc;
+  if (logo && doc.layers.some((l) => l.type === "image" && l.name === "Logo")) {
+    out = { ...out, layers: out.layers.map((l) => (l.type === "image" && l.name === "Logo" ? { ...l, src: logo } : l)) };
+  }
+  if (photo) {
+    const aUneCoucheDePhoto = out.layers.some((l) => l.type === "image" && l.name === "Photo de l'établissement");
+    if (aUneCoucheDePhoto) {
+      out = {
+        ...out,
+        layers: out.layers.map((l) =>
+          l.type === "image" && l.name === "Photo de l'établissement" ? { ...l, src: photo } : l,
+        ),
+      };
+    } else if (out.background.kind === "image") {
+      // Le modèle a choisi la photo en plein fond plutôt qu'en calque.
+      out = { ...out, background: { ...out.background, image: photo } };
+    }
+  }
+  return out;
 }
 
 function lireCommeDataUrl(file: File): Promise<string> {
@@ -141,18 +156,25 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   // Logo ou photo choisi mais pas encore envoyé : une data URL, prête à
   // partir avec le prochain message. `null` tant que rien n'est sélectionné.
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  // Quel bouton a déclenché la sélection de fichier — logo ou photo de
+  // l'établissement. Décide où le fichier ira dans etat.logo/etat.photo côté
+  // serveur, et lequel des deux refs ci-dessous le récupère au retour.
+  const [pendingImageRole, setPendingImageRole] = useState<"logo" | "photo">("logo");
+  const roleImageChoisi = useRef<"logo" | "photo">("logo");
   const shown = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Session `lib/fidiia` en cours, renvoyée à chaque requête. Une ref, pas un
   // state : elle ne pilote aucun rendu, elle ne fait que voyager.
   const fidiiaSession = useRef<FidiiaSession>(null);
-  // Dernier logo envoyé, gardé côté client. Le serveur ne connaît le logo que
-  // le temps d'un appel vision (couleurs/style) : il ne le stocke nulle part,
-  // renvoyer l'image à chaque tour alourdirait chaque requête FidiIA de
-  // plusieurs Mo pour rien. FidiIA décide où et à quelle taille le placer
-  // (calque "Logo") ; c'est le client qui y met l'image réelle.
+  // Dernier logo / dernière photo envoyés, gardés côté client. Le serveur ne
+  // connaît chacun que le temps d'un appel vision (couleurs/style) : il ne
+  // les stocke nulle part, renvoyer l'image à chaque tour alourdirait chaque
+  // requête FidiIA de plusieurs Mo pour rien. FidiIA décide où et à quelle
+  // taille les placer (calques "Logo" / "Photo de l'établissement", ou le
+  // fond lui-même) ; c'est le client qui y met le fichier réel.
   const dernierLogo = useRef<string | null>(null);
+  const dernierePhoto = useRef<string | null>(null);
   // La promesse de la sonde, gardée telle quelle — pas seulement son
   // résultat dans `aiLive`. `aiLive` vaut `null` tant qu'elle n'a pas
   // répondu, et `null` est faux : un message envoyé pendant ce laps
@@ -297,14 +319,17 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
 
   // --- mode « vrai modèle » : le moteur `lib/fidiia` mène la conversation ---
 
-  async function runFidiia(userText: string, image?: string) {
-    if (image) dernierLogo.current = image;
+  async function runFidiia(userText: string, image?: string, imageRole?: "logo" | "photo") {
+    if (image) {
+      if (imageRole === "photo") dernierePhoto.current = image;
+      else dernierLogo.current = image;
+    }
     setBusy(true);
     try {
       const r = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: userText, session: fidiiaSession.current, image }),
+        body: JSON.stringify({ message: userText, session: fidiiaSession.current, image, imageRole }),
       });
       const data = await r.json();
       if (!r.ok) {
@@ -325,9 +350,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       // La carte conçue par FidiIA remplace celle de l'éditeur dès qu'elle
       // existe : le moteur ne propose pas un choix, il livre une carte prête.
       if (data.carte) {
-        const carte = dernierLogo.current
-          ? integrerLogoReel(data.carte as CardDoc, dernierLogo.current)
-          : (data.carte as CardDoc);
+        const carte = integrerImagesReelles(data.carte as CardDoc, dernierLogo.current, dernierePhoto.current);
         applyTemplate(carte);
         if (data.config) setConfig(data.config as Partial<LoyaltyConfig>);
         add({ role: "assistant", text: data.reply, cardApplied: carte });
@@ -391,6 +414,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     }
     try {
       setPendingImage(await lireCommeDataUrl(file));
+      setPendingImageRole(roleImageChoisi.current);
     } catch {
       pushToast("Impossible de lire cette image.");
     }
@@ -401,6 +425,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     if (!text || busy) return;
     setInput("");
     const image = pendingImage ?? undefined;
+    const imageRole = pendingImageRole;
     setPendingImage(null);
     add({ role: "user", text });
     // « je veux des points » doit être entendu dans les deux régimes
@@ -424,7 +449,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
     }
 
     if (vivant) {
-      runFidiia(text, image);
+      runFidiia(text, image, image ? imageRole : undefined);
       return;
     }
     if (phase === "activity") handleActivity(text);
@@ -715,7 +740,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
         <div className="flex items-center gap-2 px-3 pb-1">
           <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: "var(--border)" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pendingImage} alt="Logo à envoyer" className="h-full w-full object-cover" />
+            <img src={pendingImage} alt={pendingImageRole === "photo" ? "Photo à envoyer" : "Logo à envoyer"} className="h-full w-full object-cover" />
             <button
               onClick={() => setPendingImage(null)}
               className="absolute -right-1 -top-1 flex h-4 w-4 cursor-pointer items-center justify-center rounded-full text-white"
@@ -726,7 +751,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
             </button>
           </div>
           <span className="text-[11px]" style={{ color: "var(--text-dim)" }}>
-            Prêt à envoyer avec votre prochain message.
+            {pendingImageRole === "photo" ? "Photo de l'établissement" : "Logo"} prêt(e) à envoyer avec votre prochain message.
           </span>
         </div>
       )}
@@ -738,8 +763,25 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
           onChange={onPickImage}
           className="hidden"
         />
-        <button onClick={() => fileInputRef.current?.click()} className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]" title="Envoyer un logo ou une photo">
+        <button
+          onClick={() => {
+            roleImageChoisi.current = "logo";
+            fileInputRef.current?.click();
+          }}
+          className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]"
+          title="Envoyer le logo"
+        >
           <Paperclip size={18} />
+        </button>
+        <button
+          onClick={() => {
+            roleImageChoisi.current = "photo";
+            fileInputRef.current?.click();
+          }}
+          className="cursor-pointer text-[var(--text-faint)] hover:text-[var(--accent-1)]"
+          title="Envoyer une photo de l'établissement"
+        >
+          <Camera size={18} />
         </button>
         <input
           value={input}

@@ -89,6 +89,8 @@ interface PostBody {
   session?: SessionBlob;
   /** Logo ou photo envoyé dans le chat — data URL déjà vérifiée (taille, type). */
   image?: string;
+  /** Quel des deux — décide si `image` alimente etat.logo ou etat.photo. */
+  imageRole?: "logo" | "photo";
 }
 
 const MAX_HISTORIQUE = 60;
@@ -171,7 +173,12 @@ function validerCorps(brut: unknown): ValidationCorps {
   if (!message) return { ok: false, motif: "aucun texte exploitable dans le message" };
   return {
     ok: true,
-    valeur: { message, session: normaliserSession(o.session), image: normaliserImage(o.image) },
+    valeur: {
+      message,
+      session: normaliserSession(o.session),
+      image: normaliserImage(o.image),
+      imageRole: o.imageRole === "photo" ? "photo" : "logo",
+    },
   };
 }
 
@@ -212,7 +219,7 @@ export async function POST(req: Request) {
 
   let resultat;
   try {
-    resultat = await envoyerMessage(session, corps.message, corps.image);
+    resultat = await envoyerMessage(session, corps.message, corps.image, corps.imageRole);
   } catch (err) {
     const statut = statutDepuisErreur(err);
     if (statut === 401) return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });

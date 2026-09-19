@@ -23,9 +23,12 @@
 import type {
   BarcodeLayer,
   CardBackground,
-  CardDoc,
+  IconLayer,
   ImageLayer,
+  CardDoc,
   Layer,
+  ShapeKind,
+  ShapeLayer,
   StampGridZone,
   TextLayer,
   Zone,
@@ -119,10 +122,23 @@ const ALIGNEMENT_VERS_ALIGN: Record<string, TextLayer["align"]> = {
 const LIBELLE_ROLE: Record<CalqueCompose["role"], string> = {
   nom: "Nom du commerce",
   logo: "Logo",
+  photo: "Photo de l'établissement",
   slogan: "Slogan",
+  titre: "Titre de section",
   recompense: "Règle du programme",
   mention: "Mention légale",
+  info: "Informations",
+  explication: "Comment ça marche",
   code: "Instruction de scan",
+  decoration: "Décoration",
+  pictogramme: "Pictogramme",
+};
+
+const FORME_VERS_SHAPE: Record<string, ShapeKind> = {
+  rect: "rect",
+  cercle: "circle",
+  ligne: "line",
+  triangle: "triangle",
 };
 
 // Appelée uniquement pour les rôles textuels (voir depuisComposition) : le
@@ -184,19 +200,36 @@ function fondDepuisComposition(fond: Composition["fond"]): CardBackground {
       imageDim: 0,
     };
   }
-  // motif — `intensite` n'a pas d'équivalent dans CardBackground (l'opacité du
-  // motif y est fixe, voir lib/backgroundStyle.ts) : traduite au mieux, pas
-  // perdue silencieusement, mais pas paramétrable finement ici.
+  if (fond.type === "motif") {
+    // `intensite` n'a pas d'équivalent dans CardBackground (l'opacité du
+    // motif y est fixe, voir lib/backgroundStyle.ts) : traduite au mieux,
+    // pas perdue silencieusement, mais pas paramétrable finement ici.
+    return {
+      kind: "pattern",
+      color: fond.base,
+      gradientFrom: fond.base,
+      gradientTo: fond.base,
+      gradientAngle: 135,
+      pattern: MOTIF_VERS_PATTERN[fond.motif] ?? "dots",
+      patternColor: fond.accent,
+      image: null,
+      imageDim: 0,
+    };
+  }
+  // fond.type === "image" : la vraie photo, en plein fond. `image` reste
+  // vide ici — comme pour le logo, seul le client a le fichier réel (voir
+  // AssistantChat.tsx:integrerImagesReelles). Sans photo reçue, ce fond se
+  // rabat sur un noir uni plutôt que de rester cassé (image: null).
   return {
-    kind: "pattern",
-    color: fond.base,
-    gradientFrom: fond.base,
-    gradientTo: fond.base,
+    kind: "image",
+    color: "#0d0d0d",
+    gradientFrom: "#0d0d0d",
+    gradientTo: "#0d0d0d",
     gradientAngle: 135,
-    pattern: MOTIF_VERS_PATTERN[fond.motif] ?? "dots",
-    patternColor: fond.accent,
+    pattern: "dots",
+    patternColor: "#0d0d0d",
     image: null,
-    imageDim: 0,
+    imageDim: Math.round(fond.assombrissement * 100),
   };
 }
 
@@ -227,13 +260,82 @@ function depuisComposition(carte: Carte, composition: Composition): { doc: CardD
 
   const layers: Layer[] = [];
   let z = 0;
+  let logoPlace = false;
+  let photoPlacee = false;
 
-  // La photo de l'établissement n'a pas de rôle dans le contrat de
-  // composition (§1 du schéma) : sa position reste fixe, comme le
-  // code-barres — ce sont des éléments de produit, pas de design.
-  if (aPhoto) {
-    const photo: ImageLayer = {
-      ...socle("Photo de l'établissement", z++),
+  for (const calque of composition.calques) {
+    z += 1;
+    if (calque.role === "logo" || calque.role === "photo") {
+      // Composé même sans fichier réel (le modèle ne sait pas toujours qu'il
+      // n'a rien reçu) : sans image à placer, le calque est ignoré plutôt que
+      // de laisser un cadre vide sur la carte.
+      const disponible = calque.role === "logo" ? aLogo : aPhoto;
+      if (!disponible) continue;
+      const img: ImageLayer = {
+        ...socle(LIBELLE_ROLE[calque.role], z),
+        type: "image",
+        x: calque.x,
+        y: calque.y,
+        width: calque.largeur,
+        height: calque.hauteur,
+        src: "",
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        radius: calque.arrondi ?? 0,
+      };
+      layers.push(img);
+      if (calque.role === "logo") logoPlace = true;
+      else photoPlacee = true;
+      continue;
+    }
+    if (calque.role === "decoration") {
+      const forme: ShapeLayer = {
+        ...socle(LIBELLE_ROLE.decoration, z),
+        type: "shape",
+        x: calque.x,
+        y: calque.y,
+        width: calque.largeur,
+        height: calque.hauteur,
+        shape: FORME_VERS_SHAPE[calque.forme ?? "rect"] ?? "rect",
+        fill: calque.couleur ?? "#000000",
+        stroke: calque.couleurBordure ?? "transparent",
+        strokeWidth: calque.epaisseurBordure ?? 0,
+        radius: calque.forme === "rect" || !calque.forme ? 8 : 0,
+      };
+      layers.push(forme);
+      continue;
+    }
+    if (calque.role === "pictogramme") {
+      const icone: IconLayer = {
+        ...socle(LIBELLE_ROLE.pictogramme, z),
+        type: "icon",
+        x: calque.x,
+        y: calque.y,
+        width: calque.largeur,
+        height: calque.hauteur,
+        icon: calque.icone ?? "Sparkles",
+        color: calque.couleur ?? "#ffffff",
+      };
+      layers.push(icone);
+      continue;
+    }
+    // Rôles textuels. Nom et récompense ont un repli déterministe (les
+    // données existent déjà ailleurs sur la carte) ; les autres sont de
+    // pures additions du modèle — vides, ils n'ont rien à afficher.
+    const repli =
+      calque.role === "nom" ? carte.nomCommerce : calque.role === "recompense" ? regleLisible(carte) : "";
+    const contenu = calque.texte || repli;
+    if (!contenu) continue;
+    layers.push(calqueTexteDepuisComposition(calque, z, contenu));
+  }
+
+  // Filet de sécurité : un commerçant qui a fourni un logo ou une photo ne
+  // doit jamais les voir disparaître simplement parce que le modèle a oublié
+  // de leur donner un calque — même position fixe qu'avant ce chantier.
+  if (aPhoto && !photoPlacee) {
+    layers.unshift({
+      ...socle(LIBELLE_ROLE.photo, 0),
       type: "image",
       x: 0,
       y: 0,
@@ -244,43 +346,25 @@ function depuisComposition(carte: Carte, composition: Composition): { doc: CardD
       contrast: 100,
       saturate: 100,
       radius: 0,
-    };
-    layers.push(photo);
+    });
+  }
+  if (aLogo && !logoPlace) {
+    layers.push({
+      ...socle(LIBELLE_ROLE.logo, ++z),
+      type: "image",
+      x: 72,
+      y: 8,
+      width: 18,
+      height: 18,
+      src: "",
+      brightness: 100,
+      contrast: 100,
+      saturate: 100,
+      radius: 0,
+    });
   }
 
-  for (const calque of composition.calques) {
-    z += 1;
-    if (calque.role === "logo") {
-      // Composé même sans logo réel (le modèle ne sait pas toujours qu'aucun
-      // fichier n'a été reçu) : sans image à placer, le calque est ignoré.
-      if (!aLogo) continue;
-      const logo: ImageLayer = {
-        ...socle("Logo", z),
-        type: "image",
-        x: calque.x,
-        y: calque.y,
-        width: calque.largeur,
-        height: calque.hauteur,
-        src: "",
-        brightness: 100,
-        contrast: 100,
-        saturate: 100,
-        radius: 0,
-      };
-      layers.push(logo);
-      continue;
-    }
-    // Nom et récompense ont un repli déterministe (les données existent déjà
-    // ailleurs sur la carte) ; slogan, mention et code sont de pures
-    // additions du modèle — vides, ils n'ont rien à afficher.
-    const repli =
-      calque.role === "nom" ? carte.nomCommerce : calque.role === "recompense" ? regleLisible(carte) : "";
-    const contenu = calque.texte || repli;
-    if (!contenu) continue;
-    layers.push(calqueTexteDepuisComposition(calque, z, contenu));
-  }
-
-  layers.push(codeBarresDepuisCarte(carte, 100));
+  layers.push(codeBarresDepuisCarte(carte, ++z));
 
   const zones: Zone[] = carte.programme.mode === "stamps" ? [zoneDepuisComposition(composition.zoneFidelite)] : [];
 

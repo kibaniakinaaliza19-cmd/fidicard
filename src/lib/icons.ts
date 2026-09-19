@@ -88,3 +88,10 @@ export const editorIconCategories: { label: string; icons: string[] }[] = [
 export function getIcon(name: string): LucideIcon {
   return iconRegistry[name] ?? Gift;
 }
+
+/** Icônes réellement rendables par `getIcon` — un nom absent d'ici tombe
+ *  silencieusement sur `Gift` à l'affichage. Sert à valider les pictogrammes
+ *  décoratifs composés par FidiIA (lib/fidiia/validation/schemas.ts) : sans
+ *  ce contrôle, une icône « décidée par Astra » pourrait s'afficher comme un
+ *  cadeau générique sans que rien ne le signale. */
+export const ICONES_DECORATIVES = Object.keys(iconRegistry);

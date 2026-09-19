@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { STAMP_CATALOG_DATA } from "../../../data/stampCatalog.generated.ts";
 import { fontOptions } from "../../fonts.ts";
+import { ICONES_DECORATIVES } from "../../icons.ts";
 
 /* ------------------------------------------------------------- primitives */
 
@@ -25,6 +26,15 @@ export const CouleurHexSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "couleur h
 const ICONES_CATALOGUE = new Set(STAMP_CATALOG_DATA.map((i) => i.lucide));
 export function iconeConnue(valeur: string): boolean {
   return ICONES_CATALOGUE.has(valeur);
+}
+
+/** Catalogue distinct des tampons (lib/icons.ts, ~60 icônes) : c'est lui, pas
+ *  le catalogue des 777 icônes de tampon, que `getIcon()` sait réellement
+ *  rendre pour un calque décoratif. Un pictogramme validé contre le mauvais
+ *  catalogue s'afficherait comme un cadeau générique sans avertissement. */
+const ICONES_DECOR_CATALOGUE = new Set(ICONES_DECORATIVES);
+export function iconeDecorConnue(valeur: string): boolean {
+  return ICONES_DECOR_CATALOGUE.has(valeur);
 }
 
 /**
@@ -160,16 +170,55 @@ export type Design = z.infer<typeof DesignSchema>;
 // cartes. Ici, c'est le modèle qui compose ; le code ne fait plus que
 // valider, corriger ce qui se corrige, et refuser ce qui ne se corrige pas.
 
-/** Rôles de calque fermés : un rôle hors de cette liste est une composition
- *  refusée, pas une composition partiellement acceptée. */
-export const RoleCalqueSchema = z.enum(["nom", "logo", "slogan", "recompense", "mention", "code"]);
+/**
+ * Rôles de calque fermés : un rôle hors de cette liste est une composition
+ * refusée, pas une composition partiellement acceptée.
+ *
+ * Six rôles au départ (texte + logo) ne suffisaient qu'à des cartes pauvres :
+ * un nom, une règle, une mention. `photo`, `decoration` et `pictogramme`
+ * portent la vraie richesse graphique (photo intégrée, panneaux, badges,
+ * séparateurs, pictogrammes de secteur) — pas une nouvelle disposition figée,
+ * juste plus de matière pour composer. `titre`, `info` et `explication`
+ * couvrent la hiérarchie de texte qui manquait (un grand titre de section,
+ * une ligne d'adresse/téléphone, un bloc « comment ça marche »).
+ */
+export const RoleCalqueSchema = z.enum([
+  "nom",
+  "logo",
+  "photo",
+  "slogan",
+  "titre",
+  "recompense",
+  "mention",
+  "info",
+  "explication",
+  "code",
+  "decoration",
+  "pictogramme",
+]);
 export type RoleCalque = z.infer<typeof RoleCalqueSchema>;
+
+/** Rôles qui portent du texte réel — police/graisse/taille/couleur/alignement
+ *  et le champ `texte` lui-même y sont exigés. Les autres (logo, photo,
+ *  decoration, pictogramme) ont chacun leurs propres champs, voir plus bas. */
+export const ROLES_CALQUE_TEXTE = [
+  "nom",
+  "slogan",
+  "titre",
+  "recompense",
+  "mention",
+  "info",
+  "explication",
+  "code",
+] as const;
 
 export const GraisseSchema = z.enum(["normal", "medium", "bold", "extrabold"]);
 export const AlignementSchema = z.enum(["gauche", "centre", "droite"]);
 /** Mêmes valeurs que StampShape (types/layer.ts) — redéfinies ici plutôt
  *  qu'importées : lib/fidiia ne dépend jamais du reste de l'app. */
 export const FormeZoneSchema = z.enum(["cercle", "arrondi", "carre"]);
+/** Mêmes formes que ShapeKind (types/layer.ts), en français. */
+export const FormeDecorSchema = z.enum(["rect", "cercle", "ligne", "triangle"]);
 
 export const FondSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("uni"), couleur: CouleurHexSchema }),
@@ -186,16 +235,21 @@ export const FondSchema = z.discriminatedUnion("type", [
     motif: z.enum(["points", "lignes", "grille", "vagues"]),
     intensite: z.number().min(0).max(1),
   }),
+  // La vraie photo du commerçant en plein fond — assombrissement pour que le
+  // texte posé par-dessus reste lisible, jamais une couleur inventée : la
+  // photo elle-même porte déjà la couleur.
+  z.object({ type: z.literal("image"), assombrissement: z.number().min(0).max(1) }),
 ]);
 export type Fond = z.infer<typeof FondSchema>;
 
 /**
- * `police`/`graisse`/`taille`/`couleur`/`alignement` sont optionnels dans le
- * schéma de base, mais exigés par le `superRefine` ci-dessous sur tout rôle
- * autre que `logo` — une image n'a ni police ni couleur de texte, les rendre
- * obligatoires pour elle aussi n'a fait que produire un rejet à chaque fois
- * que le modèle omettait, à raison, ces champs sur son calque logo (observé
- * en réel : `calques.N.police : expected ... received undefined`).
+ * Chaque champ au-delà de position/taille est optionnel dans le schéma de
+ * base, mais exigé par le `superRefine` ci-dessous selon le RÔLE : un logo ou
+ * une photo n'ont ni police ni couleur de texte (les rendre obligatoires pour
+ * eux n'a fait que produire un rejet à chaque fois que le modèle omettait, à
+ * raison, ces champs — observé en réel : `calques.N.police : expected ...
+ * received undefined`) ; une décoration ou un pictogramme ont leurs propres
+ * champs, pas ceux du texte.
  */
 export const CalqueComposeSchema = z
   .object({
@@ -205,19 +259,43 @@ export const CalqueComposeSchema = z
     y: PctSchema,
     largeur: PctSchema,
     hauteur: PctSchema,
+    // rôles textuels
     police: PoliceSchema.optional(),
     graisse: GraisseSchema.optional(),
     taille: z.number().min(TAILLE_CALQUE_MIN).max(TAILLE_CALQUE_MAX).optional(),
     couleur: CouleurHexSchema.optional(),
     alignement: AlignementSchema.optional(),
+    // logo / photo — coins arrondis, en % du plus petit côté (0 = carré net)
+    arrondi: z.number().min(0).max(50).optional(),
+    // decoration
+    forme: FormeDecorSchema.optional(),
+    couleurBordure: CouleurHexSchema.optional(),
+    epaisseurBordure: z.number().min(0).max(10).optional(),
+    // pictogramme — `couleur` (déjà déclaré ci-dessus) sert aussi ici
+    icone: z.string().min(1).max(NOM_MAX).optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.role === "logo") return;
-    for (const champ of ["police", "graisse", "taille", "couleur", "alignement"] as const) {
-      if (val[champ] === undefined) {
-        ctx.addIssue({ code: "custom", path: [champ], message: `requis pour un calque de rôle « ${val.role} »` });
+    if ((ROLES_CALQUE_TEXTE as readonly string[]).includes(val.role)) {
+      if (!val.texte) {
+        ctx.addIssue({ code: "custom", path: ["texte"], message: `texte requis pour un calque de rôle « ${val.role} »` });
       }
+      for (const champ of ["police", "graisse", "taille", "couleur", "alignement"] as const) {
+        if (val[champ] === undefined) {
+          ctx.addIssue({ code: "custom", path: [champ], message: `requis pour un calque de rôle « ${val.role} »` });
+        }
+      }
+    } else if (val.role === "decoration") {
+      if (!val.forme) ctx.addIssue({ code: "custom", path: ["forme"], message: "« forme » requise pour une décoration" });
+      if (!val.couleur) ctx.addIssue({ code: "custom", path: ["couleur"], message: "« couleur » requise pour une décoration" });
+    } else if (val.role === "pictogramme") {
+      if (!val.icone) {
+        ctx.addIssue({ code: "custom", path: ["icone"], message: "« icone » requise pour un pictogramme" });
+      } else if (!iconeDecorConnue(val.icone)) {
+        ctx.addIssue({ code: "custom", path: ["icone"], message: "icône absente du catalogue décoratif" });
+      }
+      if (!val.couleur) ctx.addIssue({ code: "custom", path: ["couleur"], message: "« couleur » requise pour un pictogramme" });
     }
+    // logo / photo : rien de plus requis, `arrondi` est optionnel.
   });
 export type CalqueCompose = z.infer<typeof CalqueComposeSchema>;
 
