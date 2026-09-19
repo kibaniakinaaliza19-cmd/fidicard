@@ -158,6 +158,25 @@ function repondre(dernier: string, contexte: string): ChatResult {
       ],
     };
   }
+  // Retouche d'une composition déjà transmise — nom réduit de moitié. Teste
+  // qu'un second `composer` change réellement l'état, pas seulement qu'il
+  // est journalisé (voir __tests__/session.test.ts).
+  if (n.includes("__composer_retouche__")) {
+    const c = compositionExemple();
+    c.calques[0].largeur = c.calques[0].largeur / 2;
+    return {
+      reply: "Nom réduit.",
+      toolCalls: [{ name: "composer", arguments: { type: "composer", ...c } }],
+    };
+  }
+  // `modifier` sur une carte déjà composée — doit être refusé par le moteur
+  // (engine/actions.ts), pas silencieusement accepté.
+  if (n.includes("__modifier_sur_composition__")) {
+    return {
+      reply: "C'est fait, le nom est réduit.",
+      toolCalls: [{ name: "modifier", arguments: { type: "modifier", cible: "texte" } }],
+    };
+  }
   // Trop d'actions dans un seul tour — teste le refus MAX_ACTIONS_PAR_TOUR.
   if (n.includes("__trop_actions__")) {
     return {

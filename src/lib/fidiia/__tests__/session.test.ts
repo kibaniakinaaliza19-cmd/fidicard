@@ -143,6 +143,49 @@ test("après deux échecs, repli sans troisième appel", async () => {
   assert.equal(r.appels, MAX_APPELS_PAR_MESSAGE);
 });
 
+/* ------------------------------------------- retoucher une carte composée */
+//
+// Le bug trouvé en réel : « modifier » était journalisé comme appliqué sur
+// une carte composée sans jamais changer un seul champ — une fausse
+// confirmation. Ces tests passent par `envoyerMessage` en entier (pas
+// `appliquerAction` isolément) : c'est le chemin réel, celui qui construit
+// aussi le `CardDoc` final via `session.carte`.
+
+const ETAT_COMPLET = {
+  secteur: "Café",
+  nomCommerce: "Le Petit Grain",
+  systemeFidelite: "stamps" as const,
+  objectif: 10,
+  recompense: { texte: "Un café offert", libelleCourt: "Offert" },
+};
+
+test("composer envoyé une seconde fois change réellement session.carte (avant ≠ après)", async () => {
+  const session = creerSession({ etat: ETAT_COMPLET });
+  await envoyerMessage(session, "__composer_seul__");
+  const largeurAvant = session.carte?.composition?.calques[0].largeur;
+  assert.ok(largeurAvant, "la première composition doit avoir été construite");
+
+  await envoyerMessage(session, "__composer_retouche__");
+  const largeurApres = session.carte?.composition?.calques[0].largeur;
+
+  assert.notEqual(largeurApres, largeurAvant, "avant === après : la retouche n'a rien changé sur la carte réelle");
+  assert.equal(largeurApres, (largeurAvant ?? 0) / 2);
+});
+
+test("modifier sur une carte composée est refusé — pas de fausse confirmation dans la réponse", async () => {
+  const session = creerSession({ etat: ETAT_COMPLET });
+  await envoyerMessage(session, "__composer_seul__");
+  const compositionAvant = JSON.stringify(session.carte?.composition);
+
+  const r = await envoyerMessage(session, "__modifier_sur_composition__");
+
+  assert.equal(r.refus?.code, "INVALIDE");
+  assert.equal(JSON.stringify(session.carte?.composition), compositionAvant, "la composition n'a pas bougé");
+  // Le mock répond « C'est fait, le nom est réduit. » : ce texte ne doit
+  // jamais atteindre le commerçant tel quel, sous peine de fausse confirmation.
+  assert.doesNotMatch(r.reply, /c'est fait/i);
+});
+
 /* ----------------------------------------------------- journal */
 
 test("le journal ne contient aucun contenu de conversation", async () => {

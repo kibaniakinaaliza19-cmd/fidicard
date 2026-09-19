@@ -41,7 +41,21 @@ function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
         (a.gamme ? `, gamme : ${a.gamme}` : ""),
     );
   }
-  if (etat.design) connu.push("design déjà transmis — le rappeler seulement si le commerçant en redemande un autre");
+  // La composition/le design déjà transmis sont montrés EN CLAIR, pas juste
+  // signalés comme « déjà fait » : sans le JSON exact, le modèle ne peut pas
+  // répondre à une retouche (« le logo plus petit ») en renvoyant la même
+  // composition avec seulement ce champ changé — il devrait la réinventer,
+  // et perdrait tout le reste au passage. Observé en réel : c'est justement
+  // ce qui manquait pour que les modifications marchent.
+  if (etat.composition) {
+    connu.push(
+      "composition déjà transmise — pour une retouche, renvoie l'action « composer » avec CET " +
+        "OBJET repris à l'identique, en ne changeant QUE le ou les champs demandés :\n" +
+        JSON.stringify(etat.composition),
+    );
+  } else if (etat.design) {
+    connu.push(`design déjà transmis, à reprendre à l'identique si retouché : ${JSON.stringify(etat.design)}`);
+  }
   if (etat.carteExistante) {
     connu.push(etat.carteAnalysee ? "carte existante : analysée" : "carte existante : à analyser");
   }

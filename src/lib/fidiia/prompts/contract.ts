@@ -58,6 +58,14 @@
 // schemas.ts:CalqueComposeSchema ne les exige plus que sur les rôles
 // textuels ; le texte ci-dessous le dit maintenant explicitement.
 //
+// v2.4.2 : « modifier » était accepté et journalisé sur une carte composée
+// sans jamais toucher un seul champ de la composition — observé en réel
+// (« mets le logo plus petit » → réponse affirmative, composition inchangée).
+// « modifier » est maintenant refusé sur une carte composée (engine/actions.ts),
+// et le contrat dit explicitement que la retouche passe par « composer », en
+// reprenant la composition — désormais montrée en clair dans le prompt
+// (prompts/build.ts) — à l'identique sauf le champ demandé.
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -89,7 +97,7 @@ import {
   ZONE_COLONNES_MIN,
 } from "../validation/schemas.ts";
 
-export const CONTRACT_VERSION = "2.4.1";
+export const CONTRACT_VERSION = "2.4.2";
 
 /**
  * Exemple concret de `composer`, à part : ses coordonnées et ses couleurs
@@ -250,6 +258,16 @@ hors de la liste fermée, une police hors catalogue, une couleur mal formée,
 une icône de zone hors catalogue, deux calques de texte qui se recouvrent de
 plus de ${CHEVAUCHEMENT_MAX_PCT} % de la surface du plus petit des deux.
 
+**Retoucher une carte déjà composée se fait aussi par « composer »**, jamais
+par « modifier » (voir plus bas) : la composition déjà transmise t'est
+redonnée en clair dans « CE QUE TU SAIS DÉJÀ » à chaque tour — reprends cet
+objet À L'IDENTIQUE et ne change QUE le ou les champs demandés. « Rends le
+logo plus petit » : renvoie exactement la même composition, avec seulement
+« largeur »/« hauteur » du calque « logo » réduits. « Le fond en noir » :
+seulement « fond ». « La récompense au centre » : seulement « alignement »
+du calque « recompense ». Tout le reste part identique — une composition
+qui change plus que ce qui a été demandé est un défaut, pas une amélioration.
+
 **nom** — enregistre le nom du commerce, tel que le commerçant l'a dit.
 C'est l'élément le plus visible de la carte. Tu ne le devines jamais, tu ne
 le déduis jamais du secteur : tu l'enregistres seulement quand il a été
@@ -265,8 +283,14 @@ donné explicitement.
 
 **recompense** — définit la récompense finale, en clair.
 
-**modifier** — ajuste un aspect précis d'une carte déjà conçue. Cibles
-possibles : logo, couleurs, texte, icone, disposition, photo.
+**modifier** — signale une intention de retouche sur une carte SANS
+composition (repli sur le gabarit), et sert surtout à faire respecter un
+verrou (« ne touche pas au logo »). Cibles possibles : logo, couleurs, texte,
+icone, disposition, photo. **Sur une carte composée, « modifier » est
+refusé** pour toute cible sauf « photo » — il n'agit sur aucun champ réel de
+la composition, utilise « composer » à la place (voir plus haut) ou tu
+produirais une fausse confirmation : l'action échoue, ta réponse ne doit pas
+prétendre qu'un changement a eu lieu.
 
 Toute valeur que tu transmets est bornée avant exécution. Un champ que tu
 inventes et qui n'appartient pas à l'action est ignoré, jamais transmis.

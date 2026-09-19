@@ -406,6 +406,12 @@ export async function envoyerMessage(session: Session, texte: string, image?: st
       journaliser("action_refusee", { type: action.type, code: r.code, motif: r.motif });
       if (r.code === "VERROU") {
         reply = `${r.motif} Dites-moi si vous voulez que je le déverrouille.`;
+      } else if (action.type === "modifier") {
+        // Le modèle a pu répondre comme si la retouche avait eu lieu (voir
+        // engine/actions.ts, cas `modifier` sur une composition) : ce texte
+        // ne doit jamais rester affiché, une fausse confirmation est pire
+        // qu'une absence de réponse.
+        reply = "Je n'ai pas pu appliquer cette retouche directement. Redites-le-moi et je recompose la carte avec ce changement.";
       }
       break;
     }

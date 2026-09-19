@@ -415,3 +415,51 @@ test("appliquerAction(composer) refuse un chevauchement de texte excessif", () =
     assert.match(r.motif, /recouvr/);
   }
 });
+
+/* ------------------------------------- retoucher une composition existante */
+//
+// Le bug trouvé en réel : « modifier » était accepté (ok:true) sur une carte
+// composée sans jamais toucher un seul champ — une fausse confirmation. Ces
+// tests comparent l'état AVANT/APRÈS, pas seulement le code de retour : un
+// test qui ne vérifierait que `ok === true` aurait laissé passer ce bug.
+
+test("composer envoyé une seconde fois change réellement la composition (avant ≠ après)", () => {
+  const r1 = appliquerAction({ type: "composer", ...compositionValide() }, creerEtat({}), creerMemoire());
+  assert.equal(r1.ok, true);
+  if (!r1.ok) return;
+  const largeurAvant = r1.etat.composition?.calques[0].largeur;
+
+  const compo2 = compositionValide();
+  compo2.calques[0].largeur = (largeurAvant ?? 60) - 20;
+  const r2 = appliquerAction({ type: "composer", ...compo2 }, r1.etat, creerMemoire());
+  assert.equal(r2.ok, true);
+  if (!r2.ok) return;
+
+  const largeurApres = r2.etat.composition?.calques[0].largeur;
+  assert.notEqual(largeurApres, largeurAvant, "avant === après : la retouche n'a rien changé");
+  assert.equal(largeurApres, (largeurAvant ?? 60) - 20);
+});
+
+test("modifier est REFUSÉ sur une carte composée — pas de fausse confirmation", () => {
+  const r1 = appliquerAction({ type: "composer", ...compositionValide() }, creerEtat({}), creerMemoire());
+  assert.equal(r1.ok, true);
+  if (!r1.ok) return;
+  const avant = JSON.stringify(r1.etat.composition);
+
+  const r2 = appliquerAction({ type: "modifier", cible: "logo" }, r1.etat, creerMemoire());
+  assert.equal(r2.ok, false, "modifier ne doit jamais renvoyer ok:true sur une composition");
+  if (!r2.ok) {
+    assert.equal(r2.code, "INVALIDE");
+    assert.match(r2.motif, /composer/);
+  }
+  // et la composition elle-même n'a évidemment pas bougé
+  assert.equal(JSON.stringify(r1.etat.composition), avant);
+});
+
+test("modifier « photo » reste accepté sur une carte composée (hors composition)", () => {
+  const r1 = appliquerAction({ type: "composer", ...compositionValide() }, creerEtat({}), creerMemoire());
+  assert.equal(r1.ok, true);
+  if (!r1.ok) return;
+  const r2 = appliquerAction({ type: "modifier", cible: "photo" }, r1.etat, creerMemoire());
+  assert.equal(r2.ok, true);
+});

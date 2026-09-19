@@ -166,6 +166,24 @@ export function appliquerAction(
           motif: `« ${action.cible} » est verrouillé par le commerçant : modification refusée.`,
         };
       }
+      // `modifier` ne touche aucun champ réel d'une composition — il ne
+      // fait que noter une intention en mémoire. Sur une carte composée,
+      // le laisser renvoyer ok:true produisait une fausse confirmation
+      // (« c'est fait » côté modèle, composition inchangée en réalité,
+      // observé en réel). Seule « composer », en renvoyant la composition
+      // à l'identique sauf le champ demandé, modifie réellement la carte —
+      // voir prompts/contract.ts et prompts/build.ts (composition montrée
+      // en clair). « photo » reste acceptée : elle n'est pas un champ de la
+      // composition (voir adapters/toCardDoc.ts).
+      if (etat.composition && action.cible !== "photo") {
+        return {
+          ok: false,
+          code: "INVALIDE",
+          motif:
+            `« modifier » n'agit pas sur une composition : pour changer « ${action.cible} », renvoie ` +
+            "l'action « composer » avec la composition déjà transmise, reprise à l'identique sauf ce champ.",
+        };
+      }
       const m = noterDecision(memory, `modif:${action.cible}`, action.valeur ?? true);
       return { ok: true, etat, memory: m, effet: `modification de ${action.cible}` };
     }
