@@ -21,6 +21,30 @@ function sansMarqueur(r: { x: number; y: number; largeur: number; hauteur: numbe
   return { x: r.x, y: r.y, largeur: r.largeur, hauteur: r.hauteur };
 }
 
+// En dessous de ces bornes, le code à modules (PDF417) et sa légende
+// n'ont plus la place de se dessiner lisiblement (LayerContent.tsx:
+// BarcodeCartouche) — un rectangle valide selon le schéma (n'importe quel
+// % > 0) peut pourtant être illisible une fois peint. On l'agrandit plutôt
+// que de laisser passer une carte dont le code ne scanne pas.
+const HAUTEUR_MIN_CODE = 8;
+const LARGEUR_MIN_CODE = 15;
+
+function assurerTailleCode<T extends { x: number; y: number; largeur: number; hauteur: number; corrige: boolean }>(
+  r: T,
+): T {
+  const largeur = Math.max(r.largeur, LARGEUR_MIN_CODE);
+  const hauteur = Math.max(r.hauteur, HAUTEUR_MIN_CODE);
+  if (largeur === r.largeur && hauteur === r.hauteur) return r;
+  return {
+    ...r,
+    largeur,
+    hauteur,
+    x: Math.min(r.x, 100 - largeur),
+    y: Math.min(r.y, 100 - hauteur),
+    corrige: true,
+  };
+}
+
 export type ResultatAction =
   | {
       ok: true;
@@ -106,7 +130,7 @@ export function appliquerAction(
       const demande = {
         prompt: action.prompt,
         zoneTampons: recadrerRect(action.zoneTampons),
-        zoneCode: recadrerRect(action.zoneCode),
+        zoneCode: assurerTailleCode(recadrerRect(action.zoneCode)),
       };
       const e = majEtat(etat, {
         habillage: {

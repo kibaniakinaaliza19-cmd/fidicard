@@ -27,6 +27,7 @@ import type {
   ImageLayer,
   CardDoc,
   Layer,
+  ProgressBarZone,
   ShapeKind,
   ShapeLayer,
   StampGridZone,
@@ -154,7 +155,7 @@ function depuisHabillage(
           // récompense en toutes lettres, bien plus lisiblement.
           { libellesPaliers: false }),
         ]
-      : [];
+      : [zoneProgressionDepuisRect(zt, carte.design?.accent)];
 
   const doc: CardDoc = {
     id: id("carte"),
@@ -374,6 +375,19 @@ function zoneDepuisComposition(
   };
 }
 
+/** Barre de progression (mode points) à partir d'un rectangle x/y/largeur/hauteur (%). */
+function zoneProgressionDepuisRect(
+  r: { x: number; y: number; largeur: number; hauteur: number },
+  accent?: string,
+): ProgressBarZone {
+  return {
+    id: id("zone"),
+    kind: "progressBar",
+    frame: { x: r.x, y: r.y, w: r.largeur, h: r.hauteur },
+    styleOverride: accent ? { fill: accent } : undefined,
+  };
+}
+
 function depuisComposition(carte: Carte, composition: Composition): { doc: CardDoc; config: Partial<LoyaltyConfig> } {
   const aLogo = carte.calques.some((c) => c.type === "image" && /logo/i.test(c.nom));
   const aPhoto = carte.calques.some((c) => c.type === "image" && /photo/i.test(c.nom));
@@ -486,7 +500,10 @@ function depuisComposition(carte: Carte, composition: Composition): { doc: CardD
 
   layers.push(codeBarresDepuisCarte(carte, ++z));
 
-  const zones: Zone[] = carte.programme.mode === "stamps" ? [zoneDepuisComposition(composition.zoneFidelite)] : [];
+  const zones: Zone[] =
+    carte.programme.mode === "stamps"
+      ? [zoneDepuisComposition(composition.zoneFidelite)]
+      : [zoneProgressionDepuisRect(composition.zoneFidelite, carte.design?.accent)];
 
   const doc: CardDoc = {
     id: id("carte"),
@@ -605,20 +622,20 @@ function depuisGabarit(carte: Carte): { doc: CardDoc; config: Partial<LoyaltyCon
 
   layers.push(codeBarresDepuisCarte(carte, 5));
 
-  // Une zone de tampons UNIQUEMENT en mode tampons. En mode points, la
-  // progression est un compteur : poser une grille ici mélangerait les deux
-  // systèmes sur la même carte.
-  const zones =
+  // Une zone de tampons en mode tampons, une barre de progression en mode
+  // points : deux systèmes différents, jamais mélangés sur la même carte.
+  const zones: Zone[] =
     carte.programme.mode === "stamps"
       ? [createDefaultStampGridZone(id("zone"), carte.programme.objectif)]
-      : [];
+      : [zoneProgressionDepuisRect({ x: 8, y: 46, largeur: 84, hauteur: 18 }, accent)];
 
   // Accent (du modèle ou du corpus) : porté par les tampons et le liseré du
   // dégradé, jamais par le fond lui-même — le fond, c'est `design.fond`.
-  if (accent && zones[0]) {
-    zones[0].icon = design?.icone;
-    zones[0].iconColor = accent;
-    zones[0].styleOverride = { filled: accent, border: accent };
+  const grille = zones[0];
+  if (accent && grille?.kind === "stampGrid") {
+    grille.icon = design?.icone;
+    grille.iconColor = accent;
+    grille.styleOverride = { filled: accent, border: accent };
   }
 
   const doc: CardDoc = {

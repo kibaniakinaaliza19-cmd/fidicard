@@ -300,7 +300,12 @@ gabarit :
   une hiérarchie        ce qui est grand, ce qui est petit, ce qui est en
                         couleur d'accent
   des pictogrammes      une rangée thématique du métier, avec libellés
-  les coordonnées       adresse, téléphone, réseau social, avec pictogrammes
+  les coordonnées       adresse, téléphone, réseau social, avec pictogrammes —
+                        UNIQUEMENT ceux que le commerçant a donnés. Aucune
+                        adresse, aucun numéro, aucun compte ne s'invente : une
+                        coordonnée plausible mais fausse est une carte fausse.
+                        Rien de fourni → la ligne de coordonnées n'existe pas,
+                        et ce n'est pas un défaut du prompt.
   l'interdiction        « ne dessine AUCUNE grille de tampons, AUCUN cercle
                         numéroté, AUCUN code-barres », et où laisser vide.
                         Les deux zones réservées doivent être RIGOUREUSEMENT

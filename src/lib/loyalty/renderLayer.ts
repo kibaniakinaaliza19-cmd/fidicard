@@ -16,6 +16,7 @@ import type {
   IconLayer,
   ImageLayer,
   Layer,
+  ProgressBarZone,
   ShapeLayer,
   StampGridZone,
   StampShape,
@@ -203,6 +204,106 @@ function renderStampGrid(zone: StampGridZone, config: LoyaltyConfig, opts: Rende
 }
 
 /**
+ * Barre de progression du mode points : pas de grille (rien à compter à
+ * l'unité), une piste + un remplissage vers le PROCHAIN palier, avec un
+ * libellé « N / cible points ». Repose sur le même repère de paliers que
+ * `appliquerScan` (lib/loyalty/index.ts) : le prochain palier non atteint,
+ * jamais un total arbitraire — `config.totalStamps` n'a pas de sens en mode
+ * points (c'est un champ hérité du mode tampons).
+ */
+function renderProgressBar(zone: ProgressBarZone, config: LoyaltyConfig, opts: RenderOptions): Layer[] {
+  if (config.mode !== "points") return [];
+  const points = clamp(Math.round(opts.client?.points ?? zone.previewPoints ?? 0), 0, Number.MAX_SAFE_INTEGER);
+  const paliers = [...config.paliers].sort((a, b) => a.position - b.position);
+  const prochain = paliers.find((p) => p.position > points) ?? null;
+  const cible = prochain?.position ?? zone.previewCible ?? Math.max(points, 1);
+  const ratio = clamp(cible > 0 ? points / cible : 1, 0, 1);
+  const libelle = prochain
+    ? `${points} / ${cible} points`
+    : paliers.length > 0
+      ? `${points} points — récompense atteinte`
+      : `${points} points`;
+
+  const style = {
+    track: zone.styleOverride?.track ?? "rgba(255,255,255,0.22)",
+    fill: zone.styleOverride?.fill ?? config.stampStyle.filled,
+    text: zone.styleOverride?.text ?? "#ffffff",
+  };
+  let z = opts.zBase ?? 1000;
+  const { frame } = zone;
+  const barH = frame.h * 0.42;
+  const barY = frame.y + frame.h - barH;
+
+  return [
+    {
+      id: `${zone.id}:piste`,
+      type: "shape",
+      name: "Progression — piste",
+      x: frame.x,
+      y: barY,
+      width: frame.w,
+      height: barH,
+      rotation: 0,
+      opacity: 100,
+      zIndex: z++,
+      locked: false,
+      hidden: false,
+      groupId: zone.id,
+      shape: "rect",
+      radius: 999,
+      fill: style.track,
+      stroke: "transparent",
+      strokeWidth: 0,
+    } satisfies ShapeLayer,
+    {
+      id: `${zone.id}:remplissage`,
+      type: "shape",
+      name: "Progression — remplissage",
+      x: frame.x,
+      y: barY,
+      width: Math.max(2, frame.w * ratio),
+      height: barH,
+      rotation: 0,
+      opacity: 100,
+      zIndex: z++,
+      locked: false,
+      hidden: false,
+      groupId: zone.id,
+      shape: "rect",
+      radius: 999,
+      fill: style.fill,
+      stroke: "transparent",
+      strokeWidth: 0,
+    } satisfies ShapeLayer,
+    {
+      id: `${zone.id}:libelle`,
+      type: "text",
+      name: "Progression — libellé",
+      content: libelle,
+      x: frame.x,
+      y: frame.y,
+      width: frame.w,
+      height: Math.max(0, frame.h - barH),
+      rotation: 0,
+      opacity: 100,
+      zIndex: z++,
+      locked: false,
+      hidden: false,
+      groupId: zone.id,
+      font: "geist",
+      fontSize: 15,
+      fontWeight: 700,
+      italic: false,
+      underline: false,
+      color: style.text,
+      align: "center",
+      letterSpacing: 0.4,
+      lineHeight: 1.1,
+    } satisfies TextLayer,
+  ];
+}
+
+/**
  * Calques éphémères d'une zone fonctionnelle. Déterministe : mêmes entrées →
  * mêmes calques, ids stables (`<zoneId>:tampon:N`) pour que la sélection et
  * les clés React survivent aux re-rendus.
@@ -211,6 +312,8 @@ export function renderLoyaltyLayer(zone: Zone, config: LoyaltyConfig, opts: Rend
   switch (zone.kind) {
     case "stampGrid":
       return renderStampGrid(zone, config, opts);
+    case "progressBar":
+      return renderProgressBar(zone, config, opts);
   }
 }
 
@@ -242,7 +345,20 @@ export function renderZonesPreview(zones: Zone[] | undefined, opts: RenderOption
   const out: Layer[] = [];
   let zBase = opts.zBase ?? 1000;
   for (const zone of zones) {
-    const total = zone.kind === "stampGrid" ? zone.previewTotal : undefined;
+    if (zone.kind === "progressBar") {
+      const cible = zone.previewCible ?? 200;
+      const points = zone.previewPoints ?? Math.round(cible * 0.55);
+      const config: LoyaltyConfig = {
+        ...DEFAULT_LOYALTY_CONFIG,
+        mode: "points",
+        paliers: [{ position: cible, label: "Offert", description: "", type: "autre" }],
+      };
+      const layers = renderLoyaltyLayer(zone, config, { zBase, client: { tampons: 0, points, paliersAtteints: [] } });
+      zBase += layers.length;
+      out.push(...layers);
+      continue;
+    }
+    const total = zone.previewTotal;
     const config: LoyaltyConfig = {
       ...DEFAULT_LOYALTY_CONFIG,
       totalStamps: total ?? DEFAULT_LOYALTY_CONFIG.totalStamps,

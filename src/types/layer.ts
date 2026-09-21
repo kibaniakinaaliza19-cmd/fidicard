@@ -129,7 +129,25 @@ export interface StampGridZone {
   styleOverride?: { empty?: string; border?: string; filled?: string };
 }
 
-export type Zone = StampGridZone;
+/**
+ * Mode points : la progression n'a pas de grille — un compteur vers le
+ * prochain palier (`config.paliers`), affiché en piste + remplissage +
+ * libellé « N / cible points ». Sans palier restant, la barre reste pleine.
+ */
+export interface ProgressBarZone {
+  id: string;
+  kind: "progressBar";
+  /** boîte englobante en % du canvas */
+  frame: ZoneFrame;
+  /** couleurs héritées d'un document migré — priorité sur config.stampStyle */
+  styleOverride?: { track?: string; fill?: string; text?: string };
+  /** points de démonstration pour la vignette de galerie (jamais le live) */
+  previewPoints?: number;
+  /** cible de démonstration pour la vignette de galerie (jamais le live) */
+  previewCible?: number;
+}
+
+export type Zone = StampGridZone | ProgressBarZone;
 
 export interface CardDoc {
   id: string;

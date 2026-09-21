@@ -494,6 +494,19 @@ test("un habillage dont la zone déborde est recadré, pas refusé", () => {
   assert.ok(r.noteCommercante, "la correction est annoncée au commerçant");
 });
 
+test("une zone de code trop petite pour être lisible est agrandie, pas refusée", () => {
+  const h = habillageValide();
+  h.zoneCode = { x: 70, y: 90, largeur: 5, hauteur: 3 };
+  const r = appliquerAction({ type: "habillage", ...h }, creerEtat({}), creerMemoire());
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  const z = r.etat.habillage!.zoneCode;
+  assert.ok(z.largeur >= 15, "largeur ramenée au minimum lisible");
+  assert.ok(z.hauteur >= 8, "hauteur ramenée au minimum lisible");
+  assert.ok(z.x + z.largeur <= 100 && z.y + z.hauteur <= 100, "l'agrandissement ne fait pas déborder la carte");
+  assert.ok(r.noteCommercante, "la correction est annoncée au commerçant");
+});
+
 test("un prompt d'habillage trop court est rejeté par le schéma", () => {
   const r = validerAction({ type: "habillage", ...habillageValide(), prompt: "une jolie carte" });
   assert.equal(r.ok, false, "un prompt d'une ligne ne produirait jamais une carte au niveau attendu");
@@ -512,6 +525,26 @@ test("le repère image → carte compense le rognage du fond en `cover`", () => 
   assert.ok(Math.abs(versCarte(50) - 50) < 0.001, "le centre reste le centre");
   assert.ok(versCarte(10) < 10, "une zone haute remonte après rognage");
   assert.ok(versCarte(90) > 90, "une zone basse descend après rognage");
+});
+
+test("la barre de progression du mode points vise le prochain palier, pas un total arbitraire", () => {
+  // Reproduit la formule de lib/loyalty/renderLayer.ts:renderProgressBar sans
+  // importer le code applicatif (cf. test du repère image → carte ci-dessus :
+  // `lib/fidiia` ne charge jamais `@/`). `config.totalStamps` n'a pas de sens
+  // en mode points ; la cible est TOUJOURS le prochain palier non atteint.
+  const cibleEtRatio = (points: number, paliers: number[]) => {
+    const prochain = paliers.filter((p) => p > points).sort((a, b) => a - b)[0] ?? null;
+    const cible = prochain ?? Math.max(points, 1);
+    return { cible, ratio: Math.max(0, Math.min(1, points / cible)) };
+  };
+
+  const enCours = cibleEtRatio(60, [90]);
+  assert.equal(enCours.cible, 90, "vise le palier suivant, jamais totalStamps");
+  assert.ok(Math.abs(enCours.ratio - 60 / 90) < 0.001);
+
+  const complet = cibleEtRatio(120, [90]);
+  assert.equal(complet.cible, 120, "aucun palier restant → pas de division par une cible dépassée");
+  assert.equal(complet.ratio, 1, "la barre reste pleine une fois tous les paliers atteints");
 });
 
 test("modifier « photo » reste accepté sur une carte composée (hors composition)", () => {
