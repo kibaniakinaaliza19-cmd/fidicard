@@ -93,6 +93,14 @@
 // primitive au moins une fois — un exemple pauvre entraînait des
 // compositions pauvres, observé en réel.
 //
+// v3.1.0 : onzième action, `qualifier` — capture des informations
+// commerciales (clients/semaine, points de vente, objectif du prospect,
+// prénom, contact). Périmètre du chantier « FidiIA commerciale » : la
+// conversation seule, aucun champ de carte touché. Chaque champ est
+// optionnel et indépendant ; aucun n'entre dans CHAMPS_REQUIS
+// (state/conversationState.ts) — un prospect qui ne donne pas son contact
+// voit quand même sa carte.
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -124,7 +132,7 @@ import {
   ZONE_COLONNES_MIN,
 } from "../validation/schemas.ts";
 
-export const CONTRACT_VERSION = "3.0.0";
+export const CONTRACT_VERSION = "3.1.0";
 
 /**
  * Exemple d'habillage, à part comme COMPOSER_EXEMPLE : ses couleurs et ses
@@ -224,7 +232,7 @@ avant que ta composition ait pu arriver). Tu n'en abuses pas : chaque tour
 n'a besoin que des actions que ce tour précis justifie, jamais de remplir le
 tableau par réflexe.
 
-Les dix actions, avec leur syntaxe exacte :
+Les onze actions, avec leur syntaxe exacte :
 
   design       { "type":"design", "accent":"#rrggbb", "fond":"#rrggbb",
                  "texte":"#rrggbb", "icone":"<nom du catalogue, ex. Coffee>",
@@ -248,8 +256,12 @@ Les dix actions, avec leur syntaxe exacte :
   habillage    { "type":"habillage", "prompt":"<direction artistique>",
                  "zoneTampons":{...}, "zoneCode":{...} } — syntaxe et
                  exemple complets ci-dessous, § habillage.
+  qualifier    { "type":"qualifier", "clientsParSemaine":<optionnel>,
+                 "nbPointsVente":<optionnel>, "objectifPrincipal":"<optionnel>",
+                 "prenom":"<optionnel>", "contact":"<optionnel>" } — un ou
+                 plusieurs champs à la fois, dès que tu les connais.
 
-Un nom d'action hors de cette liste de dix est ignoré.
+Un nom d'action hors de cette liste de onze est ignoré.
 
 ## habillage — LE GESTE QUI FAIT LA QUALITÉ
 
@@ -491,7 +503,16 @@ donné explicitement.
 
 **proposer** — enregistre le secteur d'activité et l'ambiance retenue.
 
-**mode** — fixe le système de fidélité : tampons ou points.
+**mode** — fixe le système de fidélité : tampons ou points. Le commerçant ne
+choisit jamais entre ces deux mots techniques : tu lui demandes comment il
+récompense ses clients aujourd'hui, et tu traduis toi-même sa réponse vers
+tampons ou points (voir prompts/commercial.ts, § Construire la carte).
+
+**qualifier** — enregistre une information commerciale sur le prospect :
+nombre de clients par semaine, nombre de points de vente, son objectif
+principal dans ses mots, son prénom, un contact (téléphone ou email). Chaque
+champ est optionnel et s'envoie dès qu'il est connu, sans attendre les
+autres. Aucun de ces champs ne conditionne la création de la carte.
 
 **objectif** — fixe le nombre de passages, ou le seuil de points.
 

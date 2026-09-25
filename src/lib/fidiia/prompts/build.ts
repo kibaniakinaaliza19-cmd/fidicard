@@ -10,17 +10,19 @@ import type { SessionMemory } from "../state/sessionMemory.ts";
 import { IDENTITY, IDENTITY_VERSION } from "./identity.ts";
 import { GUARDRAILS, GUARDRAILS_VERSION } from "./guardrails.ts";
 import { CONTRACT, CONTRACT_VERSION } from "./contract.ts";
+import { COMMERCIAL, COMMERCIAL_VERSION } from "./commercial.ts";
 import { referencesDistinctes, trouverSecteur } from "../corpus/index.ts";
+import { estimerGain } from "../commercial/estimation.ts";
 
 /** Bornes reprises du cahier des charges (gestion du contexte). */
 export const MAX_MESSAGES = 40;
 export const MAX_CARACTERES = 4000;
 
-export const PROMPT_VERSION = `${IDENTITY_VERSION}/${GUARDRAILS_VERSION}/${CONTRACT_VERSION}`;
+export const PROMPT_VERSION = `${IDENTITY_VERSION}/${GUARDRAILS_VERSION}/${CONTRACT_VERSION}/${COMMERCIAL_VERSION}`;
 
 /** Partie stable du prompt : candidate à la mise en cache d'un fournisseur. */
 export function partieStable(): string {
-  return [IDENTITY, GUARDRAILS, CONTRACT].join("\n\n---\n\n");
+  return [IDENTITY, GUARDRAILS, CONTRACT, COMMERCIAL].join("\n\n---\n\n");
 }
 
 function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
@@ -59,6 +61,24 @@ function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
   }
   if (etat.carteExistante) {
     connu.push(etat.carteAnalysee ? "carte existante : analysée" : "carte existante : à analyser");
+  }
+
+  // Qualification commerciale (§ prompts/commercial.ts). Hors de CHAMPS_REQUIS
+  // à dessein : elle s'affiche dès qu'un champ est connu, elle ne bloque rien.
+  if (etat.clientsParSemaine !== undefined) connu.push(`clients/semaine : ${etat.clientsParSemaine}`);
+  if (etat.nbPointsVente !== undefined) connu.push(`points de vente : ${etat.nbPointsVente}`);
+  if (etat.objectifPrincipal) connu.push(`objectif principal du prospect : ${etat.objectifPrincipal}`);
+  if (etat.prenom) connu.push(`prénom : ${etat.prenom}`);
+  if (etat.contact) connu.push(`contact : ${etat.contact}`);
+
+  // Le gain, calculé une fois ici et jamais par le modèle — voir
+  // commercial/estimation.ts et guardrails.ts (aucun chiffre inventé).
+  const gain = estimerGain({ clientsParSemaine: etat.clientsParSemaine, nbPointsVente: etat.nbPointsVente });
+  if (gain) {
+    connu.push(
+      `gain estimé (calculé, ${gain.hypotheseTexte}) : environ ${gain.visitesSupplementairesParMois} ` +
+        "visites de plus par mois grâce au programme — annonce EXACTEMENT ce chiffre si tu en parles (§ 5 du bloc commercial), ne le recalcule jamais toi-même",
+    );
   }
 
   const manque = informationsManquantes(etat);

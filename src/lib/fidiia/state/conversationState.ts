@@ -51,6 +51,19 @@ export interface EtatBrut {
    * absente, la carte se rend sans habillage, par la composition de calques.
    */
   habillage?: Habillage & { image?: string };
+
+  /* ---- qualification commerciale (action `qualifier`) ----
+   * Volontairement hors de CHAMPS_REQUIS : ce sont des informations utiles
+   * au commercial, jamais une condition pour voir sa carte. Un prospect qui
+   * ne répond pas à l'une d'elles ne doit jamais rester bloqué. */
+  /** Estimation du commerçant, pas un chiffre exact — sert au calcul de gain. */
+  clientsParSemaine?: number;
+  nbPointsVente?: number;
+  /** Ce qu'il cherche à résoudre, avec SES mots — voir prompts/commercial.ts. */
+  objectifPrincipal?: string;
+  prenom?: string;
+  /** Téléphone ou email, tel que donné — aucun format n'est imposé ici. */
+  contact?: string;
 }
 
 export interface ConversationState extends EtatBrut {

@@ -247,6 +247,28 @@ export function appliquerAction(
       const m = noterDecision(memory, `modif:${action.cible}`, action.valeur ?? true);
       return { ok: true, etat, memory: m, effet: `modification de ${action.cible}` };
     }
+
+    case "qualifier": {
+      // Chaque champ est indépendant : on ne patch que ceux réellement
+      // transmis, jamais un `undefined` qui écraserait une valeur déjà
+      // connue (majEtat ignore déjà les clés undefined, mais construire le
+      // patch explicitement documente l'intention).
+      const patch: Partial<ConversationState> = {};
+      const captes: string[] = [];
+      if (action.clientsParSemaine !== undefined) { patch.clientsParSemaine = action.clientsParSemaine; captes.push("clients/semaine"); }
+      if (action.nbPointsVente !== undefined) { patch.nbPointsVente = action.nbPointsVente; captes.push("points de vente"); }
+      if (action.objectifPrincipal !== undefined) { patch.objectifPrincipal = action.objectifPrincipal; captes.push("objectif"); }
+      if (action.prenom !== undefined) { patch.prenom = action.prenom; captes.push("prénom"); }
+      if (action.contact !== undefined) { patch.contact = action.contact; captes.push("contact"); }
+      const e = majEtat(etat, patch);
+      const m = noterDecision(memory, "qualification", captes.join(", ") || "vide");
+      return {
+        ok: true,
+        etat: e,
+        memory: m,
+        effet: captes.length ? `qualification : ${captes.join(", ")}` : "qualification sans champ",
+      };
+    }
   }
 }
 

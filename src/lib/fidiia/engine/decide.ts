@@ -97,7 +97,9 @@ export function formulerQuestion(champ: ChampRequis): string {
     case "nomCommerce":
       return "Quel nom apparaît sur la carte ?";
     case "systemeFidelite":
-      return "Vous préférez des tampons ou des points ?";
+      // Pas « tampons ou points ? » — deux mots techniques qu'un commerçant
+      // n'a aucune raison de connaître. Voir identity.ts v2.3.0.
+      return "Comment récompensez-vous vos clients aujourd'hui ?";
     case "objectif":
       return "Au bout de combien de passages le client est-il récompensé ?";
     case "recompense":

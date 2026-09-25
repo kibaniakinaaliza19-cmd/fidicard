@@ -116,6 +116,17 @@ export const ZONE_COLONNES_MAX = 10;
 /** Au-delà, deux calques de texte se recouvrent trop pour rester lisibles
  *  l'un et l'autre — voir validation/quality.ts:chevauchementExcessif. */
 export const CHEVAUCHEMENT_MAX_PCT = 30;
+/**
+ * Qualification commerciale — pas de contenu de carte. Des plages larges :
+ * ce ne sont pas des tampons ni des points, ce sont les chiffres réels du
+ * commerce (nombre de vitrines, clients hebdomadaires), qui peuvent
+ * légitimement dépasser les bornes du programme de fidélité.
+ */
+export const CLIENTS_SEMAINE_MAX = 100000;
+export const POINTS_VENTE_MAX = 500;
+/** Durée de l'essai proposé au closing (§ prompts/commercial.ts). */
+export const ESSAI_JOURS_GRATUITS = 14;
+
 /** Une seule action par tour a longtemps bloqué la composition : elle arrive
  *  toujours après le dernier champ requis (contrat une-action-par-tour), donc
  *  jamais à temps pour la première construction de la carte. `action` accepte
@@ -416,6 +427,22 @@ export const ActionSchema = z.discriminatedUnion("type", [
     type: z.literal("habillage"),
     ...HabillageSchema.shape,
   }),
+  /**
+   * Qualification commerciale : ce que le prospect est, pas ce que sera sa
+   * carte. Chaque champ est optionnel et indépendant des autres — le
+   * commercial envoie l'action dès qu'IL CONNAÎT une information, sans
+   * attendre d'avoir les cinq. Rien ici n'entre dans `CHAMPS_REQUIS` : un
+   * prospect qui refuse de donner son contact doit quand même pouvoir voir
+   * sa carte, la qualification ne bloque jamais la création.
+   */
+  z.object({
+    type: z.literal("qualifier"),
+    clientsParSemaine: z.number().int().min(1).max(CLIENTS_SEMAINE_MAX).optional(),
+    nbPointsVente: z.number().int().min(1).max(POINTS_VENTE_MAX).optional(),
+    objectifPrincipal: z.string().min(1).max(TEXTE_MAX).optional(),
+    prenom: z.string().min(1).max(NOM_MAX).optional(),
+    contact: z.string().min(3).max(120).optional(),
+  }),
 ]);
 export type Action = z.infer<typeof ActionSchema>;
 
@@ -431,6 +458,7 @@ export const NOMS_ACTIONS = [
   "modifier",
   "composer",
   "habillage",
+  "qualifier",
 ] as const;
 
 /* -------------------------------------------------------- sortie complète */

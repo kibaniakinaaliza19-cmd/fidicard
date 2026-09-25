@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { IDENTITY, IDENTITY_VERSION } from "../prompts/identity.ts";
 import { GUARDRAILS, GUARDRAILS_VERSION } from "../prompts/guardrails.ts";
 import { CONTRACT, CONTRACT_VERSION, COMPOSER_EXEMPLE, HABILLAGE_EXEMPLE } from "../prompts/contract.ts";
+import { COMMERCIAL, COMMERCIAL_VERSION } from "../prompts/commercial.ts";
 import { MAX_CARACTERES, MAX_MESSAGES, PROMPT_VERSION } from "../prompts/build.ts";
 import { MAX_APPELS_PAR_MESSAGE } from "../index.ts";
 import {
@@ -21,6 +22,7 @@ import {
   CALQUES_COMPOSES_MAX,
   CALQUES_COMPOSES_MIN,
   CHEVAUCHEMENT_MAX_PCT,
+  ESSAI_JOURS_GRATUITS,
   LIBELLE_COURT_MAX,
   MAX_ACTIONS_PAR_TOUR,
   NB_PROPOSITIONS,
@@ -75,6 +77,7 @@ const VALEURS_DECLAREES = [
   CHEVAUCHEMENT_MAX_PCT,
   PCT_MIN,
   PCT_MAX,
+  ESSAI_JOURS_GRATUITS,
 ];
 
 // Les deux exemples (COMPOSER_EXEMPLE, HABILLAGE_EXEMPLE) portent des
@@ -88,6 +91,7 @@ const BLOCS: [string, string][] = [
   ["identity.ts", IDENTITY],
   ["guardrails.ts", GUARDRAILS],
   ["contract.ts", CONTRACT_SANS_EXEMPLE],
+  ["commercial.ts", COMMERCIAL],
 ];
 
 /* --------------------------------------- le contrôle se contrôle lui-même */
@@ -134,7 +138,7 @@ test("le contrat énonce réellement les bornes qu'il prétend faire respecter",
 
 /* --------------------------------------------- cohérence avec le contrat */
 
-test("le contrat nomme les sept actions, et elles seules", () => {
+test("le contrat nomme toutes les actions de NOMS_ACTIONS, et elles seules", () => {
   for (const nom of NOMS_ACTIONS) {
     assert.match(CONTRACT, new RegExp(`\\b${nom}\\b`), `action « ${nom} » absente du contrat`);
   }
@@ -163,11 +167,11 @@ test("l'identité nomme FidiIA", () => {
   assert.match(IDENTITY, /FidiIA/);
 });
 
-test("les trois blocs portent une version exploitable", () => {
-  for (const v of [IDENTITY_VERSION, GUARDRAILS_VERSION, CONTRACT_VERSION]) {
+test("les quatre blocs portent une version exploitable", () => {
+  for (const v of [IDENTITY_VERSION, GUARDRAILS_VERSION, CONTRACT_VERSION, COMMERCIAL_VERSION]) {
     assert.match(v, /^\d+\.\d+\.\d+$/, `version « ${v} » hors format`);
   }
   // La version composite part au journal : sans elle, une régression de prompt
   // est indétectable après coup.
-  assert.equal(PROMPT_VERSION, `${IDENTITY_VERSION}/${GUARDRAILS_VERSION}/${CONTRACT_VERSION}`);
+  assert.equal(PROMPT_VERSION, `${IDENTITY_VERSION}/${GUARDRAILS_VERSION}/${CONTRACT_VERSION}/${COMMERCIAL_VERSION}`);
 });
