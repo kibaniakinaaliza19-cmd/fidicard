@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Send, Mic, Paperclip, Camera, Wand2, RefreshCw, X } from "lucide-react";
 import MiniCard from "@/components/cardEditor/MiniCard";
 import OrbeIA from "@/components/aiDesigner/OrbeIA";
@@ -63,8 +64,13 @@ const SECTOR_CHIPS = [
    vierge. Ce ne sont pas des fonctionnalités : chacune n'écrit qu'une phrase
    dans la conversation. L'assistant reste un interlocuteur, pas un menu
    déguisé en tableau de bord. */
+/* La première tuile n'envoie plus de message : elle ouvre le parcours en
+ * étapes (/carte/nouvelle) — visuel plutôt qu'un long chat, voir
+ * src/components/parcours/Parcours.tsx. Les trois autres continuent
+ * d'ouvrir directement la conversation, pour ce qui reste conversationnel
+ * par nature (modifier, relancer, comprendre des chiffres). */
 const DEMANDES = [
-  { titre: "Créer une carte", detail: "Générez votre carte de fidélité", envoi: "Crée-moi une nouvelle carte de fidélité" },
+  { titre: "Créer ma carte", detail: "Un parcours guidé, en quelques écrans", href: "/carte/nouvelle" },
   { titre: "Modifier ma carte", detail: "Dites ce que vous voulez changer", envoi: "Je veux modifier ma carte" },
   { titre: "Faire revenir mes clients", detail: "Une offre à envoyer", envoi: "Fais une offre pour faire revenir mes clients" },
   { titre: "Comprendre mes résultats", detail: "Ce que disent vos chiffres", envoi: "Pourquoi mes récompenses sont-elles moins utilisées ?" },
@@ -121,6 +127,7 @@ function lireCommeDataUrl(file: File): Promise<string> {
 }
 
 export default function AssistantChat({ onStep }: { onStep: (n: number) => void }) {
+  const router = useRouter();
   const applyTemplate = useCardStore((s) => s.applyTemplate);
   const setConfig = useLoyaltyStore((s) => s.setConfig);
   const pushToast = useUIStore((s) => s.pushToast);
@@ -560,7 +567,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
               {DEMANDES.map((d) => (
                 <button
                   key={d.titre}
-                  onClick={() => submit(d.envoi)}
+                  onClick={() => ("href" in d ? router.push(d.href) : submit(d.envoi))}
                   className="cursor-pointer text-left transition-colors"
                   style={{
                     background: "var(--surface-2)",

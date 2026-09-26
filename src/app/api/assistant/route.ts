@@ -97,6 +97,9 @@ interface PostBody {
   image?: string;
   /** Quel des deux — décide si `image` alimente etat.logo ou etat.photo. */
   imageRole?: "logo" | "photo";
+  /** Un message qui pré-remplit l'état sans compter dans le budget de tours
+   *  avant génération forcée — voir lib/fidiia/index.ts:envoyerMessage. */
+  silencieux?: boolean;
 }
 
 const MAX_HISTORIQUE = 60;
@@ -190,6 +193,7 @@ function validerCorps(brut: unknown): ValidationCorps {
       session: normaliserSession(o.session),
       image: normaliserImage(o.image),
       imageRole: o.imageRole === "photo" ? "photo" : "logo",
+      silencieux: o.silencieux === true,
     },
   };
 }
@@ -286,7 +290,7 @@ export async function POST(req: Request) {
 
   let resultat;
   try {
-    resultat = await envoyerMessage(session, corps.message, corps.image, corps.imageRole);
+    resultat = await envoyerMessage(session, corps.message, corps.image, corps.imageRole, corps.silencieux);
   } catch (err) {
     const statut = statutDepuisErreur(err);
     if (statut === 401) return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });

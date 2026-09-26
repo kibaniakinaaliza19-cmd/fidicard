@@ -286,8 +286,24 @@ export async function envoyerMessage(
   texte: string,
   image?: string,
   imageRole: "logo" | "photo" = "logo",
+  /**
+   * Vrai pour un message qui pré-remplit l'état sans faire partie de
+   * l'entretien visible (le parcours en étapes envoie ainsi la présentation
+   * du commerce, chaque image, puis les couleurs avant d'afficher le
+   * moindre échange à l'écran — voir components/parcours/Parcours.tsx).
+   *
+   * Sans cette distinction, ces tours silencieux consommaient le même
+   * budget que la vraie conversation (MAX_TOURS_AVANT_CREATION,
+   * engine/decide.ts) : jusqu'à cinq tours perdus avant même la première
+   * question affichée, et la limite de secours se déclenchait en pratique
+   * avant que le moteur ait pu capter tous les champs correctement — observé
+   * en réel, un objectif corrigé par le commerçant restait ignoré. Le
+   * comportement par défaut (false) ne change rien pour la conversation
+   * libre existante.
+   */
+  silencieux = false,
 ): Promise<Reponse> {
-  session.tours += 1;
+  if (!silencieux) session.tours += 1;
   session.historique.push({ role: "user", content: texte });
 
   // 1. Les verrous se posent AVANT tout appel : ils ne dépendent pas du modèle.
