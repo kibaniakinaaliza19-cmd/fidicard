@@ -257,6 +257,7 @@ export function appliquerAction(
       const captes: string[] = [];
       if (action.clientsParSemaine !== undefined) { patch.clientsParSemaine = action.clientsParSemaine; captes.push("clients/semaine"); }
       if (action.nbPointsVente !== undefined) { patch.nbPointsVente = action.nbPointsVente; captes.push("points de vente"); }
+      if (action.panierMoyen !== undefined) { patch.panierMoyen = action.panierMoyen; captes.push("panier moyen"); }
       if (action.objectifPrincipal !== undefined) { patch.objectifPrincipal = action.objectifPrincipal; captes.push("objectif"); }
       if (action.prenom !== undefined) { patch.prenom = action.prenom; captes.push("prénom"); }
       if (action.contact !== undefined) { patch.contact = action.contact; captes.push("contact"); }

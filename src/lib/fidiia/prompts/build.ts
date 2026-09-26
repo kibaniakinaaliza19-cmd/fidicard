@@ -67,17 +67,28 @@ function resumerEtat(etat: ConversationState, memory: SessionMemory): string {
   // à dessein : elle s'affiche dès qu'un champ est connu, elle ne bloque rien.
   if (etat.clientsParSemaine !== undefined) connu.push(`clients/semaine : ${etat.clientsParSemaine}`);
   if (etat.nbPointsVente !== undefined) connu.push(`points de vente : ${etat.nbPointsVente}`);
+  if (etat.panierMoyen !== undefined) connu.push(`panier moyen : ${etat.panierMoyen} €`);
   if (etat.objectifPrincipal) connu.push(`objectif principal du prospect : ${etat.objectifPrincipal}`);
   if (etat.prenom) connu.push(`prénom : ${etat.prenom}`);
   if (etat.contact) connu.push(`contact : ${etat.contact}`);
 
   // Le gain, calculé une fois ici et jamais par le modèle — voir
   // commercial/estimation.ts et guardrails.ts (aucun chiffre inventé).
-  const gain = estimerGain({ clientsParSemaine: etat.clientsParSemaine, nbPointsVente: etat.nbPointsVente });
+  const gain = estimerGain({
+    clientsParSemaine: etat.clientsParSemaine,
+    nbPointsVente: etat.nbPointsVente,
+    panierMoyen: etat.panierMoyen,
+  });
   if (gain) {
+    // L'euro ne s'ajoute que si le panier moyen est connu : jamais de
+    // montant sans le chiffre qui l'a produit.
+    const euro =
+      gain.gainEuroParMois !== undefined
+        ? `, soit environ ${gain.gainEuroParMois} € de plus par mois (panier moyen ${etat.panierMoyen} €)`
+        : "";
     connu.push(
       `gain estimé (calculé, ${gain.hypotheseTexte}) : environ ${gain.visitesSupplementairesParMois} ` +
-        "visites de plus par mois grâce au programme — annonce EXACTEMENT ce chiffre si tu en parles (§ 5 du bloc commercial), ne le recalcule jamais toi-même",
+        `visites de plus par mois grâce au programme${euro} — annonce EXACTEMENT ce ou ces chiffres si tu en parles (§ Le gain estimé du bloc commercial), ne les recalcule jamais toi-même`,
     );
   }
 

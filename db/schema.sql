@@ -96,6 +96,47 @@ create table if not exists passages (
   created_at timestamptz not null default now()
 );
 
+-- Un prospect qualifié par FidiIA (assistant commercial, src/lib/fidiia/
+-- prompts/commercial.ts). Écrite dès que prénom OU contact devient connu en
+-- cours de conversation (src/app/api/assistant/route.ts) — jusqu'ici,
+-- l'information ne vivait que dans le blob de session renvoyé au navigateur,
+-- perdue si le prospect fermait l'onglet sans laisser d'autre trace.
+--
+-- session_id identifie la conversation, pas le prospect : c'est la clé sur
+-- laquelle la route fait un UPSERT (insère puis met à jour LA MÊME ligne
+-- tant que la conversation continue), pour qu'un prénom donné à un tour puis
+-- un contact donné cinq tours plus tard finissent sur une seule ligne, pas
+-- deux. Généré une fois par conversation, jamais par le visiteur.
+create table if not exists prospects (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null unique,
+  prenom text,
+  contact text,
+  -- « type de commerce » : reprend etat.secteur tel que qualifié par FidiIA.
+  secteur text,
+  clients_par_semaine integer,
+  nb_points_vente integer,
+  panier_moyen numeric,
+  objectif_principal text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table prospects enable row level security;
+
+-- AUCUNE policy, volontairement : RLS activé sans la moindre règle interdit
+-- tout accès — lecture ET écriture — au rôle public `anon` (celui de
+-- NEXT_PUBLIC_SUPABASE_ANON_KEY, le seul que le navigateur connaît). Un
+-- visiteur ne peut donc ni lire les prospects des autres, ni en écrire lui-même
+-- en interrogeant Supabase directement.
+--
+-- L'écriture passe UNIQUEMENT par src/app/api/assistant/route.ts, côté
+-- serveur, avec SUPABASE_SERVICE_ROLE_KEY (jamais préfixée NEXT_PUBLIC_,
+-- jamais envoyée au navigateur) — cette clé contourne RLS par conception,
+-- c'est le rôle de confiance du serveur, pas celui du visiteur. Cette table
+-- n'a donc besoin d'aucune policy `anon` pour fonctionner : moins de
+-- policies à auditer, et une seule porte d'entrée à surveiller.
+
 create index if not exists idx_cards_user_id on cards (user_id);
 create index if not exists idx_clients_card_id on clients (card_id);
 create index if not exists idx_clients_code on clients (code_client);

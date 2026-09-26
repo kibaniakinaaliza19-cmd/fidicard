@@ -23,11 +23,15 @@ const SEMAINES_PAR_MOIS = 4.33;
 export interface HypotheseGain {
   clientsParSemaine?: number;
   nbPointsVente?: number;
+  /** En euros. Sans lui, le gain reste en visites — jamais un euro deviné. */
+  panierMoyen?: number;
 }
 
 export interface EstimationGain {
   /** Nombre de visites supplémentaires estimées par mois, arrondi. */
   visitesSupplementairesParMois: number;
+  /** Présent uniquement si le panier moyen est connu — jamais déduit. */
+  gainEuroParMois?: number;
   /** Phrase d'hypothèse, à citer telle quelle : le taux y est en toutes lettres. */
   hypotheseTexte: string;
 }
@@ -44,8 +48,16 @@ export function estimerGain(h: HypotheseGain): EstimationGain | null {
   const pointsVente = h.nbPointsVente && h.nbPointsVente > 0 ? h.nbPointsVente : 1;
   const visitesParMois = h.clientsParSemaine * SEMAINES_PAR_MOIS * pointsVente;
   const visitesSupplementairesParMois = Math.round(visitesParMois * TAUX_RETOUR_PRUDENT);
+  // Le panier moyen ne fait que convertir un nombre de visites déjà estimé en
+  // euros : il ne change ni le taux ni l'hypothèse, il l'exprime dans l'unité
+  // que le commerçant comprend le mieux.
+  const gainEuroParMois =
+    h.panierMoyen && h.panierMoyen > 0
+      ? Math.round(visitesSupplementairesParMois * h.panierMoyen)
+      : undefined;
   return {
     visitesSupplementairesParMois,
+    gainEuroParMois,
     hypotheseTexte: `hypothèse prudente : ${Math.round(TAUX_RETOUR_PRUDENT * 100)} % de visites en plus grâce au programme de fidélité`,
   };
 }

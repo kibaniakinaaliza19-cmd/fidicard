@@ -124,6 +124,9 @@ export const CHEVAUCHEMENT_MAX_PCT = 30;
  */
 export const CLIENTS_SEMAINE_MAX = 100000;
 export const POINTS_VENTE_MAX = 500;
+/** Panier moyen en euros — sert à chiffrer le gain estimé en euros, pas
+ *  seulement en visites (commercial/estimation.ts). */
+export const PANIER_MOYEN_MAX = 10000;
 /** Durée de l'essai proposé au closing (§ prompts/commercial.ts). */
 export const ESSAI_JOURS_GRATUITS = 14;
 
@@ -439,6 +442,9 @@ export const ActionSchema = z.discriminatedUnion("type", [
     type: z.literal("qualifier"),
     clientsParSemaine: z.number().int().min(1).max(CLIENTS_SEMAINE_MAX).optional(),
     nbPointsVente: z.number().int().min(1).max(POINTS_VENTE_MAX).optional(),
+    /** En euros. Décimales acceptées (ex. 12.5) : un panier moyen n'est pas
+     *  toujours un nombre rond. */
+    panierMoyen: z.number().positive().max(PANIER_MOYEN_MAX).optional(),
     objectifPrincipal: z.string().min(1).max(TEXTE_MAX).optional(),
     prenom: z.string().min(1).max(NOM_MAX).optional(),
     contact: z.string().min(3).max(120).optional(),

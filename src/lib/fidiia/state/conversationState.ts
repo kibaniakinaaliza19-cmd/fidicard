@@ -59,6 +59,9 @@ export interface EtatBrut {
   /** Estimation du commerçant, pas un chiffre exact — sert au calcul de gain. */
   clientsParSemaine?: number;
   nbPointsVente?: number;
+  /** En euros — sert à chiffrer le gain estimé en euros, pas seulement en
+   *  visites (commercial/estimation.ts). */
+  panierMoyen?: number;
   /** Ce qu'il cherche à résoudre, avec SES mots — voir prompts/commercial.ts. */
   objectifPrincipal?: string;
   prenom?: string;

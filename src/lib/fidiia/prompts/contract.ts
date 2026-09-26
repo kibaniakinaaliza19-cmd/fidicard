@@ -101,6 +101,9 @@
 // (state/conversationState.ts) — un prospect qui ne donne pas son contact
 // voit quand même sa carte.
 //
+// v3.2.0 : `qualifier` gagne `panierMoyen` (en euros) — le gain estimé se
+// chiffre en euros par mois quand ce champ est connu (commercial/estimation.ts).
+//
 // Ce bloc reprend le document 27 du cahier des charges. Les deux doivent
 // rester identiques : une divergence produit une sortie conforme à la
 // spécification et refusée par le produit. Il est concaténé après
@@ -132,7 +135,7 @@ import {
   ZONE_COLONNES_MIN,
 } from "../validation/schemas.ts";
 
-export const CONTRACT_VERSION = "3.1.0";
+export const CONTRACT_VERSION = "3.2.0";
 
 /**
  * Exemple d'habillage, à part comme COMPOSER_EXEMPLE : ses couleurs et ses
@@ -257,7 +260,8 @@ Les onze actions, avec leur syntaxe exacte :
                  "zoneTampons":{...}, "zoneCode":{...} } — syntaxe et
                  exemple complets ci-dessous, § habillage.
   qualifier    { "type":"qualifier", "clientsParSemaine":<optionnel>,
-                 "nbPointsVente":<optionnel>, "objectifPrincipal":"<optionnel>",
+                 "nbPointsVente":<optionnel>, "panierMoyen":<optionnel, en euros>,
+                 "objectifPrincipal":"<optionnel>",
                  "prenom":"<optionnel>", "contact":"<optionnel>" } — un ou
                  plusieurs champs à la fois, dès que tu les connais.
 
@@ -509,10 +513,11 @@ récompense ses clients aujourd'hui, et tu traduis toi-même sa réponse vers
 tampons ou points (voir prompts/commercial.ts, § Construire la carte).
 
 **qualifier** — enregistre une information commerciale sur le prospect :
-nombre de clients par semaine, nombre de points de vente, son objectif
-principal dans ses mots, son prénom, un contact (téléphone ou email). Chaque
-champ est optionnel et s'envoie dès qu'il est connu, sans attendre les
-autres. Aucun de ces champs ne conditionne la création de la carte.
+nombre de clients par semaine, nombre de points de vente, panier moyen en
+euros, son objectif principal dans ses mots, son prénom, un contact
+(téléphone ou email). Chaque champ est optionnel et s'envoie dès qu'il est
+connu, sans attendre les autres. Aucun de ces champs ne conditionne la
+création de la carte.
 
 **objectif** — fixe le nombre de passages, ou le seuil de points.
 

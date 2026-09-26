@@ -48,6 +48,26 @@ test("le résultat est un entier arrondi, jamais une fraction de visite", () => 
   assert.equal(Number.isInteger(r.visitesSupplementairesParMois), true);
 });
 
+/* ------------------------------------------------ le panier moyen, en euros */
+
+test("sans panier moyen, aucun gain en euros n'est produit", () => {
+  const r = estimerGain({ clientsParSemaine: 100 });
+  assert.ok(r);
+  assert.equal(r.gainEuroParMois, undefined);
+});
+
+test("avec un panier moyen, le gain en euros est le nombre de visites × le panier", () => {
+  const r = estimerGain({ clientsParSemaine: 100, panierMoyen: 12 });
+  assert.ok(r);
+  assert.equal(r.gainEuroParMois, Math.round(r.visitesSupplementairesParMois * 12));
+});
+
+test("un panier moyen nul ou négatif est ignoré, pas transformé en gain négatif", () => {
+  const r = estimerGain({ clientsParSemaine: 100, panierMoyen: 0 });
+  assert.ok(r);
+  assert.equal(r.gainEuroParMois, undefined);
+});
+
 /* -------------------------------------- l'action, de bout en bout */
 
 test("l'action qualifier valide un sous-ensemble de champs", () => {
@@ -108,4 +128,18 @@ test("dès que les clients/semaine sont connus, le prompt porte un gain calculé
   assert.ok(r);
   assert.match(texteSysteme(etat), LIGNE_GAIN_CALCULE);
   assert.match(texteSysteme(etat), new RegExp(String(r.visitesSupplementairesParMois)));
+});
+
+test("sans panier moyen, le prompt ne mentionne aucun montant en euros", () => {
+  const etat = creerEtat({ nomCommerce: "Le Spot", clientsParSemaine: 120 });
+  assert.doesNotMatch(texteSysteme(etat), /€ de plus par mois/);
+});
+
+test("avec un panier moyen, le prompt porte le gain converti en euros", () => {
+  const etat = creerEtat({ nomCommerce: "Le Spot", clientsParSemaine: 120, panierMoyen: 15 });
+  const r = estimerGain({ clientsParSemaine: 120, panierMoyen: 15 });
+  assert.ok(r?.gainEuroParMois !== undefined);
+  const texte = texteSysteme(etat);
+  assert.match(texte, /€ de plus par mois/);
+  assert.match(texte, new RegExp(String(r.gainEuroParMois)));
 });
