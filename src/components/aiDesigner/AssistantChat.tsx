@@ -151,10 +151,6 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
   const [input, setInput] = useState("");
   // null = pas encore su ; true = vrai modèle branché ; false = repli local
   const [aiLive, setAiLive] = useState<boolean | null>(null);
-  // Nom du modèle réellement configuré côté serveur (ex. "gpt-6-astra"),
-  // affiché tel quel : la preuve que la carte vient de ce modèle, pas d'un
-  // catalogue local, doit être visible sans avoir à lire les logs serveur.
-  const [aiModel, setAiModel] = useState<string | null>(null);
   // true seulement quand une clé est configurée côté serveur mais que
   // l'appel de contrôle échoue quand même (clé révoquée, modèle retiré...) :
   // une vraie panne, à distinguer du repli local voulu (pas de clé du tout).
@@ -211,7 +207,6 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
       .then((d) => {
         const vivant = Boolean(d.available);
         setAiLive(vivant);
-        setAiModel(typeof d.model === "string" ? d.model : null);
         if (d.configured && !d.available) {
           setAiDown(true);
           setMessages((prev) => [
@@ -542,7 +537,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: aiDown ? "var(--danger)" : aiLive ? "var(--success)" : "var(--warning, #b8860b)" }}
           />
-          {aiDown ? "IA indisponible" : aiLive ? `En ligne · ${aiModel ?? "modèle"}` : "Mode démo — catalogue local"}
+          {aiDown ? "IA indisponible" : aiLive ? "En ligne" : "Mode démo — catalogue local"}
         </span>
       </div>
 
@@ -685,7 +680,7 @@ export default function AssistantChat({ onStep }: { onStep: (n: number) => void 
                 <div className="mt-2.5">
                   <p className="mb-1 flex items-center gap-1 text-[10px] font-medium" style={{ color: "var(--success)" }}>
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
-                    Conçue par FidiIA{aiModel ? ` · ${aiModel}` : ""}
+                    Conçue par FidiIA
                   </p>
                   <div className="w-[140px] overflow-hidden rounded-xl border" style={{ borderColor: "var(--border)" }}>
                     <MiniCard doc={m.cardApplied} width={140} preview />
