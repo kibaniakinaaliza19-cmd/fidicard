@@ -4,39 +4,34 @@ import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import OrbeIA from "@/components/aiDesigner/OrbeIA";
 
-interface Msg {
+export interface MsgChat {
   id: number;
   role: "assistant" | "user";
-  text: string;
+  text?: string;
 }
 
 let mid = 0;
 const nextId = () => ++mid;
 
 /**
- * Le seul écran du parcours qui ressemble à un chat — et volontairement
- * court : les étapes 2 à 4 ont déjà transmis nom, secteur, logo, photo et
- * couleurs en silence, donc FidiIA n'a plus qu'à demander ce qui reste
- * (comment le commerçant récompense ses clients, la récompense exacte,
- * l'objectif, ses clients par semaine, son panier moyen). L'entretien
- * complet existe toujours dans /carte pour qui préfère tout dérouler en
- * discutant.
+ * Version 1 de la conversation : texte seul, chaîne IA réelle, badge d'état
+ * réel (pas encore de nuance d'erreur — ajoutée à l'étape suivante du
+ * chantier). Les vignettes d'image et les puces de suggestion arrivent dans
+ * un commit séparé (§ plan validé, étape 3) pour garder chaque commit lisible.
  */
 export default function EtapeConversation({
   premiereReponse,
+  aiLive,
   onEnvoyer,
   onCreationPossible,
 }: {
-  /** Ce que FidiIA a déjà répondu au dernier message silencieux des étapes 2
-   *  à 4 (présentation, logo/photos, couleurs) — affiché tel quel comme
-   *  première bulle, sans nouvel appel : elle a déjà posé la question qui
-   *  compte, la reposer serait la redire pour rien. */
   premiereReponse: string;
+  /** null = pas encore su, true = en ligne, false = indisponible. */
+  aiLive: boolean | null;
   onEnvoyer: (texte: string) => Promise<{ reply: string; carte: unknown; creationAutorisee: boolean } | null>;
-  /** Une carte est arrivée : le parcours avance vers la génération. */
   onCreationPossible: () => void;
 }) {
-  const [messages, setMessages] = useState<Msg[]>(() =>
+  const [messages, setMessages] = useState<MsgChat[]>(() =>
     premiereReponse ? [{ id: nextId(), role: "assistant", text: premiereReponse }] : [],
   );
   const [input, setInput] = useState("");
@@ -77,6 +72,25 @@ export default function EtapeConversation({
 
   return (
     <div className="flex flex-1 flex-col">
+      <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: "var(--border)" }}>
+        <OrbeIA taille={36} actif={busy} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+            Fidi<span style={{ color: "var(--accent)" }}>IA</span>
+          </p>
+        </div>
+        <span
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+          style={{ border: "1px solid var(--border-strong)", color: "var(--text-dim)" }}
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: aiLive === true ? "var(--success)" : aiLive === false ? "var(--danger)" : "var(--text-faint)" }}
+          />
+          {aiLive === true ? "En ligne" : aiLive === false ? "Indisponible" : "Connexion…"}
+        </span>
+      </div>
+
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center pt-6 text-center">

@@ -10,7 +10,7 @@ export default function EtapeAccueil({ onSuivant }: { onSuivant: () => void }) {
         Créons votre carte ensemble
       </h1>
       <p className="mt-2 max-w-[280px] text-[13px]" style={{ color: "var(--text-dim)" }}>
-        Quelques écrans rapides, et votre carte de fidélité est prête — vous pourrez tout ajuster ensuite.
+        Une conversation, quelques photos si vous en avez — et votre carte de fidélité est prête.
       </p>
       <button onClick={onSuivant} className="btn btn-primary mt-6 w-full max-w-[280px]">
         Commencer
