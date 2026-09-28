@@ -33,14 +33,26 @@ export default function EtapePersonnalisation({
   const card = useCardStore((s) => s.card);
 
   return (
-    <div className="flex flex-1 flex-col">
+    // min-h-0 : sans lui, un enfant flex-1 refuse de rétrécir sous la
+    // hauteur naturelle de son contenu (carte + conversation + bouton).
+    // Le bloc entier débordait alors du cadre visible, et le bouton
+    // « C'est parfait, continuer » se retrouvait sous la barre de
+    // navigation fixe — cliquable nulle part, un test Playwright l'a
+    // confirmé avant que quiconque ne le remarque à l'œil.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-col items-center px-6 pb-3 pt-4">
         <div className="w-full max-w-[360px] overflow-hidden rounded-[22px] shadow-lg">
           <MiniCard doc={card} width={360} />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
+      {/* flex, pas un simple bloc : EtapeConversation porte elle-même
+          "flex flex-1 flex-col", une classe qui n'a aucun effet hors d'un
+          parent flex. Sans ça, elle s'affichait à sa hauteur de contenu
+          plutôt que de se contraindre à l'espace restant — elle débordait
+          et le bouton "C'est parfait, continuer" chevauchait son dernier
+          message au lieu de s'afficher après. */}
+      <div className="flex min-h-0 flex-1 flex-col">
         <EtapeConversation
           premiereReponse="Votre carte est prête. Vous pouvez me demander n'importe quelle modification — le logo, les couleurs, la récompense, tout ce que vous voulez ajuster."
           aiLive={aiLive}

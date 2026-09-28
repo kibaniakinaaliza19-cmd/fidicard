@@ -187,7 +187,12 @@ export default function EtapeConversation({
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    // min-h-0 : utilisée seule (Parcours.tsx) cette racine reçoit sa hauteur
+    // d'un ancêtre déjà contraint et le défaut ne se voyait pas. Imbriquée
+    // une fois de plus (EtapePersonnalisation), rien au-dessus ne forçait
+    // plus sa hauteur : elle grandissait à celle de son contenu — tous les
+    // messages, jamais rétrécie — et débordait sur ce qui suit dans le flux.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: "var(--border)" }}>
         <OrbeIA taille={36} actif={busy} />
         <div className="min-w-0 flex-1">
@@ -207,7 +212,7 @@ export default function EtapeConversation({
         </span>
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {tousLesMessages.length === 0 && (
           // Cet écran n'apparaît que dans l'instant qui sépare "Commencer" de
           // la première réponse du serveur (Parcours.tsx porte cet appel) :
