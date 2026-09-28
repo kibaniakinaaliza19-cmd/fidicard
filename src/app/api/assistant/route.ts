@@ -252,6 +252,24 @@ function statutDepuisErreur(err: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Code stable que le client peut distinguer sans jamais voir le détail
+ * technique — voir components/parcours/EtapeConversation.tsx. Un même
+ * statut HTTP 429 recouvre deux réalités très différentes chez OpenAI (une
+ * limite de fréquence passagère, ou un compte à court de crédit) : le corps
+ * de la réponse le dit, mais seulement dans un texte libre destiné aux
+ * développeurs, jamais montré au commerçant tel quel.
+ */
+type CodeErreurAssistant = "INDISPONIBLE" | "CREDITS_EPUISES" | "SATURE" | "SERVEUR";
+
+function codeErreur(err: unknown, statut: number | null): CodeErreurAssistant {
+  const message = err instanceof Error ? err.message : "";
+  if (statut === 401) return "INDISPONIBLE";
+  if (statut === 429 && /insufficient_quota/i.test(message)) return "CREDITS_EPUISES";
+  if (statut === 429) return "SATURE";
+  return "SERVEUR";
+}
+
 export async function POST(req: Request) {
   // Un corps illisible n'est pas une panne, c'est un corps vide : la seule
   // conséquence est qu'il n'y aura rien à en tirer, traité plus bas comme
@@ -293,9 +311,13 @@ export async function POST(req: Request) {
     resultat = await envoyerMessage(session, corps.message, corps.image, corps.imageRole, corps.silencieux);
   } catch (err) {
     const statut = statutDepuisErreur(err);
-    if (statut === 401) return Response.json({ error: "Clé OpenAI invalide côté serveur." }, { status: 503 });
-    if (statut === 429) return Response.json({ error: "Quota OpenAI atteint — réessayez dans un instant." }, { status: 429 });
-    return Response.json({ error: "L'assistant n'a pas répondu." }, { status: 502 });
+    const code = codeErreur(err, statut);
+    // Le motif technique part dans le journal serveur, jamais dans la
+    // réponse : "openai 429 : insufficient_quota…" ne dit rien d'actionnable
+    // à un commerçant, et révèle l'infrastructure pour rien.
+    console.warn(JSON.stringify({ scope: "assistant.erreur", code, statut, at: new Date().toISOString() }));
+    if (code === "SATURE") return Response.json({ error: "Trop de demandes en ce moment.", code }, { status: 429 });
+    return Response.json({ error: "L'assistant n'a pas répondu.", code }, { status: statut === 401 ? 503 : 502 });
   }
 
   await enregistrerProspect(sessionId, session.etat);

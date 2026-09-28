@@ -14,12 +14,15 @@ import { ETAPES, type NomEtape } from "./types";
 
 type FidiiaSession = Record<string, unknown> | null;
 
-interface ReponseServeur {
-  reply: string;
-  carte: CardDoc | null;
-  config: Partial<LoyaltyConfig> | null;
-  session: FidiiaSession;
-}
+/** Même vocabulaire que route.ts:codeErreur — un code stable, jamais le
+ *  détail technique. "RESEAU" est ajouté ici : côté client, une requête qui
+ *  échoue avant même d'atteindre le serveur (coupure, DNS…) n'a pas de code
+ *  serveur à relayer. */
+export type CodeErreur = "INDISPONIBLE" | "CREDITS_EPUISES" | "SATURE" | "SERVEUR" | "RESEAU";
+
+type ReponseEnvoi =
+  | { ok: true; reply: string; carte: CardDoc | null; config: Partial<LoyaltyConfig> | null; session: FidiiaSession }
+  | { ok: false; code: CodeErreur };
 
 function etatDe(session: FidiiaSession): Record<string, unknown> {
   return (session as { etat?: Record<string, unknown> } | null)?.etat ?? {};
@@ -67,28 +70,34 @@ export default function Parcours() {
   }, []);
 
   const envoyer = useCallback(
-    async (message: string, image?: string, imageRole?: "logo" | "photo", silencieux = false): Promise<ReponseServeur | null> => {
+    async (message: string, image?: string, imageRole?: "logo" | "photo", silencieux = false): Promise<ReponseEnvoi> => {
+      let r: Response;
       try {
-        const r = await fetch("/api/assistant", {
+        r = await fetch("/api/assistant", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ message, session: session.current, image, imageRole, silencieux }),
         });
-        const data = await r.json();
-        if (!r.ok) return null;
-        session.current = data.session ?? null;
-        avancer(candidatDepuisEtat(etatDe(session.current)));
-        if (data.carte) {
-          const carte = integrerImagesReelles(data.carte as CardDoc, logoReel.current, photoReelle.current);
-          applyTemplate(carte);
-          if (data.config) setConfig(data.config as Partial<LoyaltyConfig>);
-          setCarteCreee(true);
-          avancer("carte");
-        }
-        return { reply: data.reply ?? "", carte: data.carte ?? null, config: data.config ?? null, session: session.current };
       } catch {
-        return null;
+        // La requête n'a même pas atteint le serveur : coupure réseau, pas
+        // une réponse d'erreur à décoder.
+        return { ok: false, code: "RESEAU" };
       }
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !data) {
+        const code: CodeErreur = data?.code ?? "SERVEUR";
+        return { ok: false, code };
+      }
+      session.current = data.session ?? null;
+      avancer(candidatDepuisEtat(etatDe(session.current)));
+      if (data.carte) {
+        const carte = integrerImagesReelles(data.carte as CardDoc, logoReel.current, photoReelle.current);
+        applyTemplate(carte);
+        if (data.config) setConfig(data.config as Partial<LoyaltyConfig>);
+        setCarteCreee(true);
+        avancer("carte");
+      }
+      return { ok: true, reply: data.reply ?? "", carte: data.carte ?? null, config: data.config ?? null, session: session.current };
     },
     [applyTemplate, setConfig, avancer],
   );
@@ -97,14 +106,27 @@ export default function Parcours() {
     setDemarre(true);
     avancer("commerce");
     const r = await envoyer("Bonjour, je veux créer ma carte de fidélité.");
-    if (r?.reply) setDerniereReponse(r.reply);
+    if (r.ok) setDerniereReponse(r.reply);
   }
 
-  async function onEnvoyerConversation(texte: string) {
-    const r = await envoyer(texte);
-    if (!r) return null;
+  /**
+   * Point d'appel de EtapeConversation. `image`/`imageRole` viennent des deux
+   * boutons de dépôt ; `silencieux` reste false ici — c'est
+   * EtapeConversation qui décide, décision 2 : un texte écrit ou une puce
+   * cliquée comptent comme un tour, une photo seule ne compte pas.
+   */
+  async function onEnvoyerConversation(
+    texte: string,
+    image?: string,
+    imageRole?: "logo" | "photo",
+    silencieux?: boolean,
+  ): Promise<{ ok: true; reply: string; carte: CardDoc | null; creationAutorisee: boolean } | { ok: false; code: CodeErreur }> {
+    if (imageRole === "logo") logoReel.current = image ?? logoReel.current;
+    if (imageRole === "photo") photoReelle.current = image ?? photoReelle.current;
+    const r = await envoyer(texte, image, imageRole, silencieux);
+    if (!r.ok) return r;
     const etat = etatDe(r.session);
-    return { reply: r.reply, carte: r.carte, creationAutorisee: Boolean(etat.creationAutorisee) };
+    return { ok: true, reply: r.reply, carte: r.carte, creationAutorisee: Boolean(etat.creationAutorisee) };
   }
 
   return (
