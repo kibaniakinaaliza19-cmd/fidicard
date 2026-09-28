@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Paperclip, Send, X } from "lucide-react";
 import OrbeIA from "@/components/aiDesigner/OrbeIA";
 import type { CodeErreur } from "./Parcours";
@@ -72,10 +72,24 @@ export default function EtapeConversation({
   onEnvoyer: (texte: string, image?: string, imageRole?: "logo" | "photo", silencieux?: boolean) => Promise<Resultat>;
   onCreationPossible: () => void;
 }) {
-  const [messages, setMessages] = useState<MsgChat[]>(() =>
-    premiereReponse
-      ? [{ id: nextId(), role: "assistant", text: premiereReponse, suggestions: suggestionsPour(premiereReponse) }]
-      : [],
+  const [messages, setMessages] = useState<MsgChat[]>([]);
+
+  /**
+   * Le premier message n'est jamais stocké dans `messages` : Parcours.tsx
+   * affiche cet écran avant même que le premier appel au serveur ait
+   * répondu (demarrer() fait setDemarre(true) puis attend envoyer()), donc
+   * premiereReponse vaut encore "" au montage. Un useState initialisé une
+   * fois pour toutes ne l'aurait jamais rattrapée ; le dériver au rendu,
+   * chaque fois, le fait sans effet ni synchronisation. L'identifiant 0 est
+   * stable d'un rendu à l'autre et ne collisionne jamais avec nextId(), qui
+   * démarre à 1.
+   */
+  const tousLesMessages: MsgChat[] = useMemo(
+    () =>
+      premiereReponse
+        ? [{ id: 0, role: "assistant", text: premiereReponse, suggestions: suggestionsPour(premiereReponse) }, ...messages]
+        : messages,
+    [premiereReponse, messages],
   );
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -87,7 +101,7 @@ export default function EtapeConversation({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, busy]);
+  }, [tousLesMessages, busy]);
 
   /**
    * Décision 2 : une photo seule ne compte pas comme un tour ; un texte
@@ -141,11 +155,29 @@ export default function EtapeConversation({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!TYPES_IMAGE_ACCEPTES.includes(file.type) || file.size > MAX_TAILLE_IMAGE_OCTETS) return;
+    // Un fichier refusé ne doit pas disparaître en silence : le commerçant
+    // qui vient de choisir une photo doit savoir pourquoi rien ne se passe.
+    if (!TYPES_IMAGE_ACCEPTES.includes(file.type)) {
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: "assistant", text: "Ce format d'image n'est pas pris en charge — utilisez un JPEG, un PNG ou un WEBP." },
+      ]);
+      return;
+    }
+    if (file.size > MAX_TAILLE_IMAGE_OCTETS) {
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: "assistant", text: "Cette image dépasse 8 Mo — une version plus légère fera très bien l'affaire." },
+      ]);
+      return;
+    }
     try {
       setImageEnAttente({ dataUrl: await lireCommeDataUrl(file), role: roleChoisi.current });
     } catch {
-      // Fichier illisible : on n'affiche rien, le commerçant réessaie.
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: "assistant", text: "Je n'ai pas réussi à lire cette image. Réessayez avec un autre fichier." },
+      ]);
     }
   }
 
@@ -171,12 +203,16 @@ export default function EtapeConversation({
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && (
+        {tousLesMessages.length === 0 && (
+          // Cet écran n'apparaît que dans l'instant qui sépare "Commencer" de
+          // la première réponse du serveur (Parcours.tsx porte cet appel) :
+          // il n'y a jamais de vide "au repos" ici, donc l'orbe réfléchit
+          // toujours pendant qu'il est seul à l'écran.
           <div className="flex flex-col items-center pt-6 text-center">
-            <OrbeIA taille={64} actif={busy} />
+            <OrbeIA taille={64} actif />
           </div>
         )}
-        {messages.map((m) => (
+        {tousLesMessages.map((m) => (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
             <div className="max-w-[85%]">
               {m.image && (
