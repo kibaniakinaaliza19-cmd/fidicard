@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Paperclip, Send, X } from "lucide-react";
 import OrbeIA from "@/components/aiDesigner/OrbeIA";
-import type { CodeErreur } from "./Parcours";
+import { MESSAGES_ERREUR, type CodeErreur } from "./Parcours";
 
 export interface MsgChat {
   id: number;
@@ -31,18 +31,6 @@ function lireCommeDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Un code d'erreur stable, jamais un détail d'infrastructure — voir
- *  route.ts:codeErreur. Les deux phrases imposées sont reprises mot pour
- *  mot ; les autres codes ont leur propre phrase, jamais fusionnés derrière
- *  un message unique. */
-const MESSAGES_ERREUR: Record<CodeErreur, string> = {
-  INDISPONIBLE: "FidiIA est temporairement indisponible.",
-  CREDITS_EPUISES: "FidiIA ne peut pas générer votre carte pour le moment.",
-  SATURE: "Trop de demandes en ce moment — réessayez dans un instant.",
-  SERVEUR: "Je n'ai pas pu répondre à l'instant. Réessayez.",
-  RESEAU: "Connexion impossible — vérifiez votre réseau et réessayez.",
-};
-
 /**
  * Puces de réponse rapide déduites du texte de FidiIA — un repérage de
  * quelques mots-clés, pas une compréhension du langage. Volontairement
@@ -66,11 +54,21 @@ export default function EtapeConversation({
   aiLive,
   onEnvoyer,
   onCreationPossible,
+  dejaCree = false,
 }: {
   premiereReponse: string;
   aiLive: boolean | null;
   onEnvoyer: (texte: string, image?: string, imageRole?: "logo" | "photo", silencieux?: boolean) => Promise<Resultat>;
   onCreationPossible: () => void;
+  /**
+   * true en personnalisation : la carte existe déjà, donc une réponse qui en
+   * porte une nouvelle est une RETOUCHE (le logo réduit, une couleur changée),
+   * pas une naissance. Sans ce drapeau, `tour()` traitait toute carte reçue
+   * comme le signal "c'est fait, quitte la conversation" — la première
+   * retouche demandée après coup renvoyait tout droit vers l'écran de
+   * confirmation au lieu de rester dans l'échange.
+   */
+  dejaCree?: boolean;
 }) {
   const [messages, setMessages] = useState<MsgChat[]>([]);
 
@@ -119,7 +117,14 @@ export default function EtapeConversation({
         return;
       }
       if (r.carte) {
-        onCreationPossible();
+        if (dejaCree) {
+          // La carte existait déjà : ceci est une retouche, pas une naissance.
+          // Le store est mis à jour par Parcours.envoyer() avant même que
+          // cette réponse n'arrive ici — il ne reste qu'à le dire.
+          setMessages((prev) => [...prev, { id: nextId(), role: "assistant", text: r.reply || "C'est fait — la carte est mise à jour." }]);
+        } else {
+          onCreationPossible();
+        }
         return;
       }
       setMessages((prev) => [...prev, { id: nextId(), role: "assistant", text: r.reply, suggestions: suggestionsPour(r.reply) }]);
@@ -254,7 +259,7 @@ export default function EtapeConversation({
             </div>
           </div>
         ))}
-        {pretACreer && !busy && (
+        {pretACreer && !busy && !dejaCree && (
           <button onClick={() => tour("Crée la carte maintenant.", undefined, undefined, true)} className="btn btn-primary w-full">
             Créer ma carte
           </button>

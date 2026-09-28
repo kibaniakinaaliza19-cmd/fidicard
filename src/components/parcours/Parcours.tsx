@@ -9,6 +9,8 @@ import BarreProgression from "./BarreProgression";
 import EtapeAccueil from "./EtapeAccueil";
 import EtapeConversation from "./EtapeConversation";
 import EtapeGeneration from "./EtapeGeneration";
+import EtapePersonnalisation from "./EtapePersonnalisation";
+import EtapeActivation from "./EtapeActivation";
 import { integrerImagesReelles } from "./images";
 import { ETAPES, type NomEtape } from "./types";
 
@@ -19,6 +21,16 @@ type FidiiaSession = Record<string, unknown> | null;
  *  échoue avant même d'atteindre le serveur (coupure, DNS…) n'a pas de code
  *  serveur à relayer. */
 export type CodeErreur = "INDISPONIBLE" | "CREDITS_EPUISES" | "SATURE" | "SERVEUR" | "RESEAU";
+
+/** Une phrase par code, jamais un message générique — partagée par tous les
+ *  écrans qui parlent à FidiIA (EtapeConversation, EtapePersonnalisation). */
+export const MESSAGES_ERREUR: Record<CodeErreur, string> = {
+  INDISPONIBLE: "FidiIA est temporairement indisponible.",
+  CREDITS_EPUISES: "FidiIA ne peut pas générer votre carte pour le moment.",
+  SATURE: "Trop de demandes en ce moment — réessayez dans un instant.",
+  SERVEUR: "Je n'ai pas pu répondre à l'instant. Réessayez.",
+  RESEAU: "Connexion impossible — vérifiez votre réseau et réessayez.",
+};
 
 type ReponseEnvoi =
   | { ok: true; reply: string; carte: CardDoc | null; config: Partial<LoyaltyConfig> | null; session: FidiiaSession }
@@ -129,9 +141,18 @@ export default function Parcours() {
     return { ok: true, reply: r.reply, carte: r.carte, creationAutorisee: Boolean(etat.creationAutorisee) };
   }
 
+  /**
+   * carteCreee ne distingue que "avant/après la première carte" ; une fois
+   * vrai, il reste vrai pour toujours (Carte, Personnalisation, Activation
+   * sont trois écrans différents dans cet état). C'est `etape` qui choisit
+   * lequel des trois, puisque c'est déjà lui que EtapeGeneration.onSuivant
+   * et EtapePersonnalisation.onSuivant font avancer.
+   */
+  const ecranApresCreation = etape === "activation" ? "activation" : etape === "personnalisation" ? "personnalisation" : "carte";
+
   return (
     <div className="mx-auto flex h-full max-w-[420px] flex-col">
-      {demarre && !carteCreee && <BarreProgression etape={etape} />}
+      {demarre && <BarreProgression etape={etape} />}
 
       {!demarre && <EtapeAccueil onSuivant={demarrer} />}
 
@@ -144,7 +165,19 @@ export default function Parcours() {
         />
       )}
 
-      {carteCreee && <EtapeGeneration onSuivant={() => avancer("personnalisation")} />}
+      {carteCreee && ecranApresCreation === "carte" && (
+        <EtapeGeneration onSuivant={() => avancer("personnalisation")} />
+      )}
+
+      {carteCreee && ecranApresCreation === "personnalisation" && (
+        <EtapePersonnalisation
+          aiLive={aiLive}
+          onEnvoyer={onEnvoyerConversation}
+          onSuivant={() => avancer("activation")}
+        />
+      )}
+
+      {carteCreee && ecranApresCreation === "activation" && <EtapeActivation />}
     </div>
   );
 }

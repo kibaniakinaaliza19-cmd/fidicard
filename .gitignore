@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scripts et captures de vérification manuelle (Playwright, diagnostics)
+.scratch-*.mjs
+.captures-parcours-chat/
