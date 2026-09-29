@@ -120,9 +120,13 @@ test("une modification sur une cible verrouillée est REJETÉE en code", () => {
   }
 });
 
-test("une modification sur une cible libre passe", () => {
+test("une modification sur une cible libre n'est pas bloquée par un verrou sans rapport", () => {
+  // "couleurs" servait ici de témoin, mais modifier() la refuse désormais
+  // toujours (redirection vers "design" — voir engine/actions.ts) : "photo"
+  // est le seul cas où modifier a un effet réel, et reste le bon témoin pour
+  // vérifier qu'un verrou sur "logo" ne déborde pas sur une autre cible.
   const m = poserVerrou(creerMemoire(), "logo");
-  const r = appliquerAction({ type: "modifier", cible: "couleurs" }, creerEtat(), m);
+  const r = appliquerAction({ type: "modifier", cible: "photo" }, creerEtat(), m);
   assert.equal(r.ok, true);
 });
 

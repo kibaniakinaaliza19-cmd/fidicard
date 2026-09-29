@@ -42,8 +42,13 @@ export default function EtapeActivation() {
     }
   }
 
-  const recompense = config.paliers[config.paliers.length - 1]?.description || "votre récompense";
   const mecanique = config.mode === "points" ? `${config.totalStamps} points` : `${config.totalStamps} passages`;
+  // La description d'un palier répète presque toujours la mécanique
+  // ("Un menu offert après 10 passages") : accolée telle quelle à mecanique,
+  // le récapitulatif disait "10 passages pour obtenir un menu offert après
+  // 10 passages". On ne garde ici que ce que mecanique ne dit pas déjà.
+  const recompense = (config.paliers[config.paliers.length - 1]?.description || "votre récompense")
+    .replace(/\s*(après|dès|à)\s+\d+\s+(passages?|points?)\s*\.?\s*$/i, "");
 
   async function creerCompte() {
     setErreur(null);

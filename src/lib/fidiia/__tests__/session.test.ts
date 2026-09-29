@@ -85,11 +85,51 @@ test("VERROU : il survit à plusieurs tours et à d'autres modifications", async
   assert.equal(r.refus?.code, "VERROU");
 });
 
+/**
+ * Règle d'honnêteté demandée après un défaut observé en réel : un modèle
+ * réel (pas le simulé) avait répondu « Je réduis le logo de 30 %, sans
+ * toucher au reste » alors que la géométrie du calque, mesurée dans le vrai
+ * DOM, n'avait pas bougé d'un pixel. Une retouche que le moteur ne sait pas
+ * appliquer ne doit JAMAIS produire une réponse qui prétend l'inverse — et
+ * la carte elle-même ne doit pas bouger.
+ */
+test("HONNÊTETÉ : une retouche de taille/position est refusée, jamais confirmée", async () => {
+  const session = creerSession();
+  await envoyerMessage(session, "Je suis fleuriste");
+  const avant = session.carte;
+
+  const r = await envoyerMessage(session, "Change seulement le logo");
+  assert.equal(r.refus?.code, "INVALIDE");
+  assert.match(r.reply, /Wallet/);
+  assert.doesNotMatch(r.reply, /(c'est fait|c’est fait|réglé|réduit|déplacé|appliqué)/i);
+  assert.equal(session.carte, avant, "la carte ne doit pas changer quand la retouche est refusée");
+});
+
+test("HONNÊTETÉ : la carte n'a pas bougé après un refus, comparée avant/après", async () => {
+  const session = creerSession();
+  await envoyerMessage(session, "Je suis coiffeur, ambiance chaleureuse");
+  await envoyerMessage(session, "Ça s'appelle Chez Test");
+  await envoyerMessage(session, "10 tampons");
+  await envoyerMessage(session, "Une coupe offerte");
+  assert.ok(session.carte, "la carte doit déjà exister pour tester une retouche dessus");
+  const carteAvant = JSON.stringify(session.carte);
+
+  const r = await envoyerMessage(session, "Change seulement le logo");
+  assert.equal(r.refus?.code, "INVALIDE");
+  assert.doesNotMatch(r.reply, /(c'est fait|c’est fait|réglé|réduit|déplacé|appliqué)/i);
+  assert.equal(JSON.stringify(session.carte), carteAvant, "aucun octet de la carte ne doit changer");
+});
+
 test("MODIFICATION CIBLÉE : une autre cible n'est pas bloquée par un verrou", async () => {
+  // "couleurs" ne convient plus de témoin : modifier() la refuse désormais
+  // toujours (redirection vers "design", aucun changement réel possible
+  // depuis une phrase libre — voir engine/actions.ts). "photo" reste le seul
+  // cas où modifier a un effet réel, et vérifie la même chose : un verrou
+  // sur "logo" ne doit pas déborder sur une cible sans rapport.
   const session = creerSession();
   await envoyerMessage(session, "Je suis barbier");
   await envoyerMessage(session, "Ne touche pas au logo");
-  const r = await envoyerMessage(session, "Change seulement les couleurs");
+  const r = await envoyerMessage(session, "Change seulement la photo");
   assert.equal(r.refus, undefined);
   assert.equal(r.actions[0]?.type, "modifier");
 });

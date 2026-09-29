@@ -434,10 +434,12 @@ export async function envoyerMessage(
         reply = `${r.motif} Dites-moi si vous voulez que je le déverrouille.`;
       } else if (action.type === "modifier") {
         // Le modèle a pu répondre comme si la retouche avait eu lieu (voir
-        // engine/actions.ts, cas `modifier` sur une composition) : ce texte
-        // ne doit jamais rester affiché, une fausse confirmation est pire
-        // qu'une absence de réponse.
-        reply = "Je n'ai pas pu appliquer cette retouche directement. Redites-le-moi et je recompose la carte avec ce changement.";
+        // engine/actions.ts, cas `modifier`) : ce texte ne doit jamais rester
+        // affiché, une fausse confirmation est pire qu'une absence de
+        // réponse. `r.motif` porte déjà la phrase honnête ET l'alternative
+        // possible (Wallet pour le logo, « design » pour les couleurs...) —
+        // la remplacer par une formule générique jetterait cette précision.
+        reply = r.motif;
       }
       break;
     }
@@ -550,7 +552,15 @@ export async function envoyerMessage(
       refus = { code: "INVALIDE", motif: motifsEchec(verdicts).join(" ; ") };
       reply = "Je n'arrive pas à finaliser la carte pour l'instant. Dites-moi votre secteur autrement, ou réessayez.";
     }
-  } else if (decisionEffective.step === "MODIFICATION" && session.carte) {
+  } else if (decisionEffective.step === "MODIFICATION" && session.carte && !refus) {
+    // !refus : la boucle d'application des actions a pu refuser la retouche
+    // (logo, disposition — engine/actions.ts) sans jamais atteindre ce bloc
+    // via un `break`... sauf que ce bloc tournait quand même, INCONDITION-
+    // NELLEMENT, et marquait `ciblesModifiees: ["logo"]` sur la carte alors
+    // que rien n'avait été appliqué. Observé en test : la carte ressortait
+    // strictement identique sauf cette étiquette — la même désinformation
+    // que le texte de réponse, une couche plus bas, sur un champ qu'un
+    // contrôle qualité ultérieur pourrait prendre pour argent comptant.
     const carte: Carte = { ...session.carte, ciblesModifiees: detecterModificationCiblee(texte) };
     verdicts = controlerCarte(carte, session.memory, { photoFournie: Boolean(session.etat.photo) });
     if (toutValide(verdicts)) session.carte = carte;

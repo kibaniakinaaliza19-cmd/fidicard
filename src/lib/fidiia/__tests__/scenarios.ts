@@ -110,12 +110,17 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: "modification-ciblee",
-    titre: "« Change uniquement ça » — rien d'autre ne bouge",
+    titre: "« Change uniquement ça » sans dire QUOI — refusé, pas de fausse confirmation",
+    // « Change uniquement les couleurs » ne dit aucune couleur : il n'y a
+    // rien de réel à appliquer. Avant la règle d'honnêteté, modifier()
+    // renvoyait ok:true sans rien changer, et « C'est fait, je n'ai touché
+    // qu'à cette partie » (voir provider/mock.ts) passait pour vrai. Le
+    // refus, avec une redirection vers « design », est le bon résultat ici.
     messages: [
       "Je suis barbier",
       "Change uniquement les couleurs",
     ],
-    attendu: { verrous: [], refusAttendu: false },
+    attendu: { verrous: [], refusAttendu: true },
   },
   {
     id: "nom-commerce",

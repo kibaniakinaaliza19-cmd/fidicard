@@ -441,6 +441,10 @@ test("composer envoyé une seconde fois change réellement la composition (avant
 });
 
 test("modifier est REFUSÉ sur une carte composée — pas de fausse confirmation", () => {
+  // "logo" est désormais refusé EN TOUTE CIRCONSTANCE (composée ou non) avec
+  // le motif Wallet, plus spécifique que l'ancien renvoi générique vers
+  // "composer" — voir engine/actions.ts. Ce test vérifie ce qui compte
+  // vraiment ici : le refus a bien lieu, et la composition ne bouge pas.
   const r1 = appliquerAction({ type: "composer", ...compositionValide() }, creerEtat({}), creerMemoire());
   assert.equal(r1.ok, true);
   if (!r1.ok) return;
@@ -450,10 +454,42 @@ test("modifier est REFUSÉ sur une carte composée — pas de fausse confirmatio
   assert.equal(r2.ok, false, "modifier ne doit jamais renvoyer ok:true sur une composition");
   if (!r2.ok) {
     assert.equal(r2.code, "INVALIDE");
-    assert.match(r2.motif, /composer/);
+    assert.match(r2.motif, /Wallet/);
   }
   // et la composition elle-même n'a évidemment pas bougé
   assert.equal(JSON.stringify(r1.etat.composition), avant);
+});
+
+test("HONNÊTETÉ : composer refuse aussi un logo redimensionné ou déplacé", () => {
+  // Le prompt dit de reprendre la composition à l'identique sauf le champ
+  // demandé (contract.ts) — mais rien n'empêchait jusqu'ici un modèle de
+  // renvoyer un calque « logo » à une autre taille ou une autre place, et de
+  // voir la composition entière acceptée telle quelle. Le format Wallet fixe
+  // cette taille et cette place ; ce test vérifie que le moteur les fait
+  // respecter, pas seulement le prompt.
+  const logo = { role: "logo" as const, x: 72, y: 8, largeur: 18, hauteur: 18, arrondi: 0 };
+  const compo1 = compositionValide();
+  compo1.calques.push(logo);
+  const r1 = appliquerAction({ type: "composer", ...compo1 }, creerEtat({}), creerMemoire());
+  assert.equal(r1.ok, true);
+  if (!r1.ok) return;
+  const avant = JSON.stringify(r1.etat.composition);
+
+  const compo2 = compositionValide();
+  compo2.calques.push({ ...logo, largeur: 12, hauteur: 12 }); // "réduis le logo de 30 %"
+  const r2 = appliquerAction({ type: "composer", ...compo2 }, r1.etat, creerMemoire());
+  assert.equal(r2.ok, false, "composer ne doit jamais redimensionner le logo en silence");
+  if (!r2.ok) {
+    assert.equal(r2.code, "INVALIDE");
+    assert.match(r2.motif, /Wallet/);
+  }
+  assert.equal(JSON.stringify(r1.etat.composition), avant, "la composition ne doit pas bouger quand le logo est refusé");
+
+  // Un déplacement seul (même taille, x différent) doit être refusé aussi.
+  const compo3 = compositionValide();
+  compo3.calques.push({ ...logo, x: 50 });
+  const r3 = appliquerAction({ type: "composer", ...compo3 }, r1.etat, creerMemoire());
+  assert.equal(r3.ok, false, "composer ne doit pas déplacer le logo en silence");
 });
 
 /* ---------------------------------------------------------- habillage */

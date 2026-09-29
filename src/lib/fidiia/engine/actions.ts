@@ -15,6 +15,18 @@ import { estVerrouille, noterDecision, noterPreference, poserVerrou } from "../s
 
 export type CodeRefus = "VERROU" | "INVALIDE" | "INCONNU";
 
+/**
+ * Ce que dit une carte Wallet, en clair, pour chaque cible que « modifier »
+ * ne peut pas appliquer elle-même. Utilisé uniquement pour rediriger vers le
+ * vrai chemin (l'action « design ») — jamais pour laisser croire qu'un
+ * changement a eu lieu.
+ */
+const LIBELLE_REDIRECTION: Record<"couleurs" | "texte" | "icone", string> = {
+  couleurs: "la couleur que vous voulez (par exemple « fond noir » ou « accent orange »)",
+  texte: "le texte à changer et sa nouvelle valeur",
+  icone: "l'icône que vous préférez",
+};
+
 /** `recadrerRect` ajoute un drapeau `corrige` utile au journal mais qui n'a
  *  rien à faire dans l'état : il le retire avant stockage. */
 function sansMarqueur(r: { x: number; y: number; largeur: number; hauteur: number }) {
@@ -95,6 +107,35 @@ export function appliquerAction(
     }
 
     case "composer": {
+      // Le prompt enseigne de reprendre la composition À L'IDENTIQUE sauf le
+      // champ demandé (prompts/contract.ts) — mais un prompt se contourne,
+      // par erreur ou par un modèle mal luné. Le logo est le seul calque pour
+      // lequel ce fichier fait respecter la règle en code : sa taille et sa
+      // position ne sont pas un réglage de la carte, ce sont celles du
+      // gabarit Wallet. Si une composition existait déjà et que celle-ci
+      // déplace ou redimensionne le logo, elle est refusée entière — pas
+      // seulement corrigée sur ce calque, pour que le refus se voie et que la
+      // réponse ne prétende jamais qu'un changement a eu lieu.
+      if (etat.composition) {
+        const logoAvant = etat.composition.calques.find((c) => c.role === "logo");
+        const logoApres = action.calques.find((c) => c.role === "logo");
+        if (
+          logoAvant &&
+          logoApres &&
+          (logoAvant.x !== logoApres.x ||
+            logoAvant.y !== logoApres.y ||
+            logoAvant.largeur !== logoApres.largeur ||
+            logoAvant.hauteur !== logoApres.hauteur)
+        ) {
+          return {
+            ok: false,
+            code: "INVALIDE",
+            motif:
+              "La taille et la position du logo sont fixées par le format Wallet, pas réglables au cas par cas. " +
+              "Je peux en revanche vous en poser un nouveau si vous voulez le remplacer.",
+          };
+        }
+      }
       // Deux calques de texte qui se recouvrent trop ne se corrigent pas :
       // déplacer arbitrairement l'un des deux romprait la composition voulue
       // par le modèle plus sûrement qu'un refus qui lui laisse recomposer.
@@ -226,26 +267,54 @@ export function appliquerAction(
           motif: `« ${action.cible} » est verrouillé par le commerçant : modification refusée.`,
         };
       }
-      // `modifier` ne touche aucun champ réel d'une composition — il ne
-      // fait que noter une intention en mémoire. Sur une carte composée,
-      // le laisser renvoyer ok:true produisait une fausse confirmation
-      // (« c'est fait » côté modèle, composition inchangée en réalité,
-      // observé en réel). Seule « composer », en renvoyant la composition
-      // à l'identique sauf le champ demandé, modifie réellement la carte —
-      // voir prompts/contract.ts et prompts/build.ts (composition montrée
-      // en clair). « photo » reste acceptée : elle n'est pas un champ de la
-      // composition (voir adapters/toCardDoc.ts).
-      if (etat.composition && action.cible !== "photo") {
+      // `modifier` ne touche RÉELLEMENT aucun champ de la carte, composée ou
+      // non — observé en réel : le modèle répondait « c'est fait » et la
+      // carte restait identique, sur les deux formes. La photo est la seule
+      // exception, un remplacement d'image plutôt qu'une retouche de mise
+      // en page (voir adapters/toCardDoc.ts).
+      //
+      // Deux cibles sont refusées EN TOUTE CIRCONSTANCE, verrou ou pas,
+      // composition ou pas : la taille et la position ne sont pas des
+      // réglages que la carte porte — Apple/Google Wallet fixe la place du
+      // logo dans son gabarit, et FidiCard ne construit pas de déplacement
+      // libre des autres éléments. Le refus est honnête et propose la seule
+      // chose qui existe vraiment à la place.
+      if (action.cible === "logo") {
         return {
           ok: false,
           code: "INVALIDE",
           motif:
-            `« modifier » n'agit pas sur une composition : pour changer « ${action.cible} », renvoie ` +
-            "l'action « composer » avec la composition déjà transmise, reprise à l'identique sauf ce champ.",
+            "La taille et la position du logo sont fixées par le format Wallet, pas réglables au cas par cas. " +
+            "Je peux en revanche vous en poser un nouveau si vous voulez le remplacer.",
         };
       }
-      const m = noterDecision(memory, `modif:${action.cible}`, action.valeur ?? true);
-      return { ok: true, etat, memory: m, effet: `modification de ${action.cible}` };
+      if (action.cible === "disposition") {
+        return {
+          ok: false,
+          code: "INVALIDE",
+          motif:
+            "Je ne déplace pas librement les éléments d'une carte Wallet. " +
+            "Dites-moi une couleur, un texte ou une récompense à changer, et je m'en occupe.",
+        };
+      }
+      // La photo est le seul cas où « modifier » a un effet réel : le
+      // commerçant vient de déposer une image, appliquée ailleurs dans le
+      // pipeline (integrerImagesReelles) — remplacer une image n'est pas une
+      // retouche de mise en page.
+      if (action.cible === "photo") {
+        const m = noterDecision(memory, "modif:photo", action.valeur ?? true);
+        return { ok: true, etat, memory: m, effet: "photo mise à jour" };
+      }
+      // Les cibles restantes (couleurs, texte, icone) ont un vrai chemin —
+      // l'action « design » — mais « modifier » ne peut pas s'y substituer :
+      // sa valeur est une phrase libre, jamais une couleur ou un texte
+      // exploitable tel quel. Rediriger dit la vérité ; renvoyer ok:true ne
+      // le ferait pas.
+      return {
+        ok: false,
+        code: "INVALIDE",
+        motif: `Dites-moi directement ${LIBELLE_REDIRECTION[action.cible]}, et je l'applique tout de suite.`,
+      };
     }
 
     case "qualifier": {
